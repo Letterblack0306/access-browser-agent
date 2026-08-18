@@ -45,5 +45,17 @@ function healthyChrome(verifyOk){
   assert.equal(stale.startCalls,1,'a dead cached endpoint must trigger a fresh browser launch');
   assert.equal(fresh.endpoint,'http://127.0.0.1:7331','relaunched browser must expose the new CDP endpoint');
 
+  // getLiveEndpoint — the authority-managed endpoint the live relay consumes —
+  // must re-verify a cached ready endpoint and relaunch when stale.
+  const liveHealthy=healthyChrome(true);
+  const liveHealthyAuthority=new BrowserSessionAuthority({managedChrome:liveHealthy,channel:baseChannel,relay:baseRelay()});
+  assert.equal(await liveHealthyAuthority.getLiveEndpoint(),'http://127.0.0.1:7330','healthy cached endpoint must be liveness-verified and reused');
+  assert.equal(liveHealthy.startCalls,0,'reuse of a verified-live endpoint must not relaunch');
+
+  const liveStale=healthyChrome(false);
+  const liveStaleAuthority=new BrowserSessionAuthority({managedChrome:liveStale,channel:baseChannel,relay:baseRelay()});
+  assert.equal(await liveStaleAuthority.getLiveEndpoint(),'http://127.0.0.1:7331','stale cached endpoint must be recovered before returning a live endpoint');
+  assert.equal(liveStale.startCalls,1,'a dead cached endpoint must be relaunched by getLiveEndpoint');
+
   console.log('browser-authority-liveness-smoke: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1;});

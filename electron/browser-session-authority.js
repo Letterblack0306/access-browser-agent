@@ -130,6 +130,15 @@ class BrowserSessionAuthority {
     return this.managedChrome.start();
   }
 
+  async getLiveEndpoint(){
+    // The single authority-managed source of a live CDP endpoint. Never returns
+    // a cached endpoint without re-verifying it is reachable (and relaunching
+    // the browser when it is not). Components performing browser work must
+    // consume this instead of trusting ManagedChrome status directly.
+    const browser=await this._ensureLiveBrowser();
+    return browser?.endpoint ? String(browser.endpoint) : '';
+  }
+
   async ensureBrowser(){
     const current=this.managedChrome.status();
     this._diag('ensure_browser','start',{browser:current});

@@ -227,7 +227,7 @@ return error;
  async start({recoveryOnly=false}={}){
     if(this.running)return{ok:true,...this.status(),alreadyRunning:true};
     if(!this.target)throw new Error('Choose a supported provider tab before starting the browser relay.');
-    const endpoint=this.getEndpoint();if(!endpoint)throw new Error('Managed Chrome has no discovered CDP endpoint yet. Relaunch it and try again.');
+    const endpoint=await this.getEndpoint();if(!endpoint)throw new Error('Managed Chrome has no discovered CDP endpoint yet. Relaunch it and try again.');
     this.lifecycle='attaching';
     try{
       const snapshot=await this.channel.snapshot(endpoint,this.target.targetId,this.target.providerId);assertSnapshotTarget(snapshot,this.target);
@@ -304,7 +304,7 @@ else throw this._recoveryError(existing,this.target,record);
   async checkOnce(){
     if(this.running){await this._tick({schedule:false});return{ok:true,...this.status()};}
     if(!this.target)throw new Error('Choose a supported provider tab before checking the browser relay.');
-    const endpoint=this.getEndpoint();if(!endpoint)throw new Error('Managed Chrome has no discovered CDP endpoint.');
+    const endpoint=await this.getEndpoint();if(!endpoint)throw new Error('Managed Chrome has no discovered CDP endpoint.');
     const snapshot=await this.channel.snapshot(endpoint,this.target.targetId,this.target.providerId);assertSnapshotTarget(snapshot,this.target);
     const instruction=parseTransportTurn(snapshot,this.getWorkspaceRoot());
     const journalRecord=instruction?this.journal.get(this._journalInput(instruction,this.target)):null;
@@ -342,7 +342,22 @@ else throw this._recoveryError(existing,this.target,record);
     if(!this.running||this.checking){if(schedule)this._schedule();return;}this.checking=true;const generation=this.generation;
     try{
       const target=this.activeTarget;if(!target)throw new Error('Browser relay has no active selected target.');
-      const endpoint=this.getEndpoint();
+      let endpoint;
+      try{
+        // Consume an authority-managed, liveness-verified endpoint when available.
+        endpoint=await this.getEndpoint();
+      }catch(error){
+        // The endpoint provider (browser authority) could not produce a live CDP
+        // endpoint. Retain any queued terminal result; otherwise keep waiting for
+        // the browser rather than crashing the loop.
+        if(this.pending){
+          this.lifecycle='delivery_retry';
+          this.delivery={...this.delivery,state:'retry_wait',error:deliveryError(error)};
+        }else{
+          this.lifecycle='waiting_for_browser';
+        }
+        return;
+      }
       if(!endpoint){
         // CDP authority is currently unavailable. Retain any queued terminal
         // result so it survives CDP recovery; keep the loop alive to retry.

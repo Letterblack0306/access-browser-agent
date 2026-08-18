@@ -545,7 +545,7 @@ app.whenReady().then(async () => {
 
     browserRelay = new BrowserInstructionRelay({
       channel: new ProviderChannel(),
-      getEndpoint: () => managedChrome?.status().endpoint || '',
+      getEndpoint: () => (browserAuthority ? browserAuthority.getLiveEndpoint() : ''),
       getWorkspaceRoot: () => workspaceRoot,
       submitInstruction: input => taskStateRouterBridge.submitInstruction(input),
       storeResult: payload => new BrowserResultStore(path.join(app.getPath('userData'), 'agent-state', workspaceKey(workspaceRoot))).put(payload),
