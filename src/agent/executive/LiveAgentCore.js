@@ -243,8 +243,27 @@ class LiveAgentCore {
           };
           const stored = await emitExecutionEvent(completed);
           runtimeEvidence.push(runtimeEvidenceRecord(stored?.data || completed, output, result?.evidence));
+
+          // A terminal tool result must terminate the current objective
+          // immediately as BLOCKED instead of decaying into repeated calls
+          // until the tool budget is exhausted. The terminal observation is
+          // already durable in the conversation and execution evidence above.
+          const terminal = result?.output?.terminal === true || result?.output?.error?.terminal === true;
+          if (terminal) {
+            const terminalCode = String(output?.code || output?.error?.code || 'TERMINAL');
+            const terminalDetail = String(output?.error?.message || output?.message || '').trim();
+            return {
+              status:'blocked',
+              blocker:'terminal_tool',
+              reason:`Terminal tool "${call.name}" returned ${terminalCode}${terminalDetail ? `: ${terminalDetail}` : ''}. The objective stopped immediately instead of exhausting the tool budget.`,
+              summary:'BLOCKED: a terminal tool outcome forced the objective to stop now.',
+              evidence:runtimeEvidence,
+              consumeInstructions:false,
+            };
+          }
+
           // Important: failed/non-found/unavailable tool observations are now
-          // in conversation as real tool messages. Control returns to the model
+          // in conversation as real flow messages. Control returns to the model
           // on the next loop iteration so it can adapt rather than terminate.
         }
       }
