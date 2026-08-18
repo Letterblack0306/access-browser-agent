@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "modules": [
+    { "id": "explorer", "content": "explorer", "placement": "left", "order": 1, "visible": true, "title": "Workspace", "icon": "EX" },
+    { "id": "task", "content": "agent", "placement": "right", "order": 20, "visible": true, "title": "Task", "icon": "TK" },
+    { "id": "execution", "content": "trace", "placement": "right", "order": 30, "visible": true, "title": "Execution", "icon": "EV" },
+    { "id": "editor", "content": "editor", "placement": "right", "order": 40, "visible": true, "title": "Editor", "icon": "ED" },
+    { "id": "browser-loop", "content": "browser", "placement": "right-agent", "order": 50, "visible": true, "title": "Browser Loop", "icon": "BL" },
+    { "id": "runtime", "content": "liveAgent", "placement": "right-agent", "order": 60, "visible": true, "title": "Runtime", "icon": "RT" },
+    { "id": "settings", "content": "settings", "placement": "right-agent", "order": 70, "visible": true, "title": "Settings", "icon": "SE" },
+    { "id": "terminal", "content": "terminal", "placement": "bottom", "order": 80, "visible": true, "title": "Terminal", "icon": ">_" },
+    { "id": "events", "content": "activity", "placement": "drawer", "order": 90, "visible": false, "title": "Events", "icon": "EV" },
+    { "id": "problems", "content": "review", "placement": "drawer", "order": 100, "visible": false, "title": "Problems", "icon": "PR" }
+  ]
+}

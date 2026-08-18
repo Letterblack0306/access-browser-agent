@@ -1,0 +1,23 @@
+path_classifiers:
+  test:
+    - test
+    - "**/*.test.js"
+    - "**/*.test.mjs"
+    - "**/*.spec.js"
+    - "**/*.spec.mjs"
+    - "**/*-smoke.js"
+
+  generated:
+    - dist
+    - build
+    - out
+    - coverage
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/out/**"
+    - "**/coverage/**"
+    - ".gpt-sync"
+    - "**/.gpt-sync/**"
+
+  library:
+    - "**/node_modules/**"

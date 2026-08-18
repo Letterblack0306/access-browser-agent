@@ -1,0 +1,77 @@
+{
+  "name": "access-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local agent workbench runtime.",
+  "main": "electron/rebuild-main.js",
+  "scripts": {
+    "precheck": "npm run guard:workspace && npm run module:status && npm run check:workspace-sync",
+    "guard:workspace": "node --check src/agent/guards/ChangeGovernanceGuard.js && node --check scripts/change-governance-check.js && node scripts/change-governance-check.js",
+    "module:status": "node scripts/module-registry.js status",
+    "module:tree": "node scripts/module-registry.js write",
+    "check:module-registry": "node scripts/module-registry.js check && node test/module-registry-smoke.js",
+    "check:workspace-sync": "node --check src/system/workspace-clone-sync.js && node test/workspace-clone-sync-smoke.js",
+    "start": "electron .",
+    "start:trace": "node scripts/start-rebuild-trace.js",
+    "eval:browser": "node test/browser-tool-evals.js",
+    "acceptance:ui": "node scripts/ui-state-driven-acceptance-v2.js",
+    "acceptance:browser-loop": "npm run acceptance:ui",
+    "acceptance:live-recovery-reconcile": "node scripts/live-recovery-reconciliation-acceptance.js",
+    "acceptance:all": "npm run eval:browser && npm run acceptance:ui && npm run check",
+    "check": "npm run check:workspace-contract && npm run check:agent-led && node --check src/system/local-runtime-diagnostics.js && node test/local-runtime-diagnostics-smoke.js && node --check src/system/ide-preferences.js && node test/ide-preferences-smoke.js && node --check src/system/managed-chrome.js && node test/managed-chrome-smoke.js && node --check src/browser/provider-channel.js && node test/provider-channel-smoke.js && node --check src/agent/executive/BrowserInstructionRelay.js && node --check electron/browser-session-authority.js && node test/browser-session-authority-smoke.js && node --check src/system/browser-result-store.js && node test/browser-instruction-relay-smoke.js && node --check src/system/machine-environment.js && node test/machine-environment-smoke.js && node --check src/system/governed-terminal.js && node test/governed-terminal-smoke.js && node --check src/system/workspace-git-status.js && node test/workspace-git-status-smoke.js && node --check src/system/skill-catalog.js && node test/skill-catalog-smoke.js && node --check src/system/workbench-layout.js && node test/workbench-layout-smoke.js && node --check src/system/module-registry.js && node test/module-registry-smoke.js && node --check src/system/ui-id-registry.js && node test/ui-id-registry-smoke.js && node --check src/loop/implementation-executor.js && node test/implementation-executor-smoke.js && node --check src/system/mcp-client.js && node --check electron/main.js && node --check electron/preload.js && node test/integration-smoke.js && npm run check:rebuild",
+    "check:rebuild": "node --check src/system/runtime-diagnostic-log.js && node --check src/system/runtime-diagnostic-bus.js && node test/runtime-diagnostic-log-smoke.js && node --check src/system/runtime-correlation.js && node --check src/system/runtime-correlation-context.js && node --check src/system/browser-transport-journal.js && node --check scripts/start-rebuild-trace.js && node --check scripts/ui-state-driven-acceptance-v2.js && node --check scripts/live-recovery-reconciliation-acceptance.js && node --check scripts/module-registry.js && node --check src/browser/observable-browser-runtime.js && node --check src/browser/browser-tool-runtime.js && node --check electron/rebuild-main.js && node --check src/agent/executive/BrowserInstructionRelay.js && node --check src/browser/provider-channel.js && node --check src/system/managed-chrome.js && node --check electron/browser-session-authority.js && node --check electron/task-state-router-bridge.js && node --check electron/pty-terminal-manager.js && node --check electron/rebuild-runtime-state.js && node --check electron/rebuild-shell.js && node --check electron/rebuild-renderer.js && node --check electron/rebuild-settings.js && node --check electron/rebuild-diagnostic-enhancer.js && node test/change-governance-smoke.js && node test/rebuild-phase0-contract-smoke.js && node test/rebuild-loop-lifecycle-smoke.js && node test/rebuild-runtime-state-smoke.js && node test/rebuild-shell-smoke.js && node test/rebuild-settings-smoke.js && node test/rebuild-diagnostic-contract-smoke.js && node test/rebuild-agent-truth-observability-smoke.js && node test/rebuild-adaptive-agent-continuation-smoke.js && node test/browser-recovery-reconciliation-smoke.js && node test/browser-scope-recovery-preflight-smoke.js",
+    "check:workspace-path-guard": "node --check src/system/workspace-path-guard.js && node test/workspace-path-guard-smoke.js",
+    "check:workspace-reader": "node --check src/system/workspace-reader.js && node test/workspace-reader-smoke.js",
+    "check:workspace-bridge": "node --check src/app/workspace-bridge-server.js && node --check src/app/start-workspace-bridge.js && node test/workspace-bridge-contract-smoke.js",
+    "check:workspace-contract": "npm run check:workspace-path-guard && npm run check:workspace-reader && npm run check:workspace-bridge",
+    "check:agent-led": "node --check src/agent/ActionProtocol.js && node --check src/agent/ToolRegistry.js && node --check src/agent/tools/_tool.js && node --check src/llm/ModelCatalog.js && node --check src/llm/ModelReadinessRegistry.js && node --check src/llm/OpenAICompatibleProvider.js && node --check src/llm/ClineAuthSession.js && node --check src/llm/ClineLlmsProvider.js && node --check src/llm/ProviderFactory.js && node --check src/agent/executive/AgentSessionState.js && node --check src/agent/executive/AgentEventStore.js && node --check src/agent/executive/ExecutionEventSchema.js && node --check src/agent/executive/AgentExecutive.js && node --check src/agent/executive/AgentSessionRuntime.js && node --check src/agent/executive/LiveAgentCore.js && node --check src/agent/executive/LiveToolContext.js && node --check src/agent/executive/UnifiedAgentService.js && node --check src/browser/browser-tool-runtime.js && node --check electron/agent-runtime-adapter.js && node test/objective-classifier-smoke.js && node test/agent-led-smoke.js && node test/agent-runtime-resilience-smoke.js && node test/execution-event-schema-smoke.js && node test/execution-trace-smoke.js && node test/tool-fallback-smoke.js && node test/live-tool-context-patch-smoke.js && node test/browser-tool-runtime-smoke.js && node test/browser-tool-evals.js && node test/cline-style-agent-smoke.js && node test/cline-provider-smoke.js && node test/model-catalog-smoke.js && node test/model-readiness-registry-smoke.js",
+    "start:workspace-bridge": "node src/app/start-workspace-bridge.js",
+    "start:ide": "electron .",
+    "acceptance:browser-bootstrap": "node scripts/managed-chrome-bootstrap-acceptance.js",
+    "acceptance:r3-recovery": "node scripts/r3-live-recovery-acceptance.js",
+    "acceptance:r3-rendered-recovery": "node scripts/r3-rendered-recovery-acceptance.js",
+    "dist": "electron-builder --dir",
+    "dist:installer": "electron-builder"
+  },
+  "dependencies": {
+    "@cline/core": "0.0.73",
+    "@cline/llms": "0.0.73",
+    "@letterblack/lbe-exec": "1.3.42",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "chrome-remote-interface": "0.34.0",
+    "node-pty": "^1.1.0",
+    "shell-quote": "^1.10.0",
+    "zod": "^4.3.6"
+  },
+  "author": "Letterblack0306",
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "productName": "Access Browser Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "scripts/**/*",
+      "skills/**/*",
+      "docs/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "npmRebuild": false
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+release/
+*.log
+*.pid
+.DS_Store
+dist/
+*.bak
+*.tmp
