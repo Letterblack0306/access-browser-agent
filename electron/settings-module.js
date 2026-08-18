@@ -46,12 +46,70 @@ const settingsById = id => document.getElementById(id);
 function replaceClineModels(models = [], catalog = [], selected = '') {
   const select = settingsById('clineModel');
   if (!select) return;
+
+  // DeepSeek models to always show as free
+  const deepseekModels = [
+    { id: 'deepseek/deepseek-v4-flash', free: true, displayName: 'DeepSeek 4 Flash' },
+    { id: 'deepseek/deepseek-v3', free: true, displayName: 'DeepSeek V3' },
+    { id: 'deepseek/deepseek-r1', free: true, displayName: 'DeepSeek R1' }
+  ];
+
+  // Build free model map from catalog
   const freeById = new Map((Array.isArray(catalog) ? catalog : []).map(item => [item.id, item.free === true]));
-  const options = [new Option('Select model', '')];
-  for (const model of Array.isArray(models) ? models : []) {
-    options.push(new Option(`${model}${freeById.get(model) ? ' · FREE' : ''}`, model));
+  
+  // Add DeepSeek models to the free map
+  for (const ds of deepseekModels) {
+    if (!freeById.has(ds.id)) {
+      freeById.set(ds.id, ds.free);
+    }
   }
-  if (selected && !models.includes(selected)) options.push(new Option(`${selected} (saved, unavailable)`, selected));
+
+  // Create combined model list
+  const modelSet = new Set(Array.isArray(models) ? models : []);
+  for (const ds of deepseekModels) {
+    modelSet.add(ds.id);
+  }
+  const combinedModels = Array.from(modelSet);
+
+  const options = [new Option('Select model', '')];
+
+  // Separate free and paid models
+  const freeItems = [];
+  const paidItems = [];
+
+  for (const model of combinedModels) {
+    const isFree = freeById.get(model) === true;
+    const dsModel = deepseekModels.find(d => d.id === model);
+    const displayName = dsModel?.displayName || model;
+    if (isFree) {
+      freeItems.push({ id: model, displayName });
+    } else {
+      paidItems.push({ id: model, displayName });
+    }
+  }
+
+  // Add free models with FREE badge
+  if (freeItems.length > 0) {
+    options.push(new Option('── Free Models ──', '', true, false));
+    for (const fm of freeItems) {
+      options.push(new Option('    ' + fm.displayName + ' 🆓 FREE', fm.id));
+    }
+  }
+
+  // Add paid models with PAID badge
+  if (paidItems.length > 0) {
+    if (freeItems.length > 0) options.push(new Option('', '', true, false));
+    options.push(new Option('── Paid Models ──', '', true, false));
+    for (const pm of paidItems) {
+      options.push(new Option('    ' + pm.displayName + ' 💳 PAID', pm.id));
+    }
+  }
+
+  if (selected && !combinedModels.includes(selected)) {
+    options.push(new Option('── Unavailable ──', '', true, false));
+    options.push(new Option('    ' + selected + ' (saved, unavailable)', selected));
+  }
+
   select.replaceChildren(...options);
   select.value = selected && options.some(option => option.value === selected) ? selected : '';
 }
@@ -65,7 +123,13 @@ function renderClineAuth(auth = {}) {
 }
 
 async function bindClineSettings({ api, ui }) {
-  const login = settingsById('clineLogin');
+   // Auto-detect existing auth session on load
+ try {
+ const status = await api.authStatus();
+ if (status) renderClineAuth(status);
+ } catch (_) { /* ignore */ }
+
+const login = settingsById('clineLogin');
   const logout = settingsById('clineLogout');
   const refresh = settingsById('clineRefreshModels');
   const test = settingsById('clineTest');
@@ -217,3 +281,4 @@ function bind({ api, ui }) {
 }
 
 window.SettingsModule = Object.freeze({ template, bind });
+

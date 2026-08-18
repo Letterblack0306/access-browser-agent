@@ -7,6 +7,52 @@ const COST_CLASSES = Object.freeze({
   UNKNOWN: 'unknown',
 });
 
+// DeepSeek model definitions
+const DEEPSEEK_MODELS = {
+  'deepseek/deepseek-v4-flash': {
+    id: 'deepseek/deepseek-v4-flash',
+    displayName: 'DeepSeek 4 Flash',
+    provider: 'deepseek',
+    providerId: 'deepseek',
+    free: true,
+    pricing: { input: 0, output: 0 },
+    metadata: {
+      free: true,
+      description: 'DeepSeek V4 Flash - Fast inference',
+      contextWindow: 128000,
+      capabilities: { completion: true, toolCalling: true }
+    }
+  },
+  'deepseek/deepseek-v3': {
+    id: 'deepseek/deepseek-v3',
+    displayName: 'DeepSeek V3',
+    provider: 'deepseek',
+    providerId: 'deepseek',
+    free: true,
+    pricing: { input: 0, output: 0 },
+    metadata: {
+      free: true,
+      description: 'DeepSeek V3 - High performance',
+      contextWindow: 128000,
+      capabilities: { completion: true, toolCalling: true }
+    }
+  },
+  'deepseek/deepseek-r1': {
+    id: 'deepseek/deepseek-r1',
+    displayName: 'DeepSeek R1',
+    provider: 'deepseek',
+    providerId: 'deepseek',
+    free: true,
+    pricing: { input: 0, output: 0 },
+    metadata: {
+      free: true,
+      description: 'DeepSeek R1 - Reasoning model',
+      contextWindow: 128000,
+      capabilities: { completion: true, toolCalling: true }
+    }
+  }
+};
+
 function finiteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -52,11 +98,9 @@ function normalizeModelCatalogEntry({ providerId, providerKind, modelId, info = 
   ).trim() || id;
 
   return {
-    // Compatibility aliases retained for the current settings renderer.
     id,
     free: pricing.classification === COST_CLASSES.FREE,
     info: rawProviderMetadata,
-
     providerId: normalizedProviderId,
     providerKind: normalizedProviderKind,
     modelId: id,
@@ -82,8 +126,21 @@ function normalizeModelCatalogEntry({ providerId, providerKind, modelId, info = 
   };
 }
 
+// Get all built-in models (DeepSeek + any future additions)
+function getBuiltInModels() {
+  return Object.values(DEEPSEEK_MODELS);
+}
+
+// Check if a model is free
+function isModelFree(modelId) {
+  return DEEPSEEK_MODELS[modelId]?.free === true;
+}
+
 module.exports = {
   COST_CLASSES,
   normalizeModelCatalogEntry,
   pricingFromInfo,
+  DEEPSEEK_MODELS,
+  getBuiltInModels,
+  isModelFree,
 };

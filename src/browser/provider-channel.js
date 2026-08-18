@@ -12,6 +12,15 @@ const PROVIDERS = Object.freeze({
     stop:['button[data-testid="stop-button"]','button[aria-label*="Stop" i]'],
     authorRole:'assistant',
   }),
+  deepseek: Object.freeze({
+    name:'DeepSeek',
+    hosts:new Set(['chat.deepseek.com','deepseek.com']),
+    assistant:['[data-message-author-role="assistant"]','.assistant-message','.message-assistant'],
+    composer:['textarea[placeholder*="message"]','textarea[placeholder*="ask"]','textarea[placeholder*="type"]','[contenteditable="true"][role="textbox"]','textarea'],
+    send:['button[aria-label="Send"]','button[type="submit"]','button:has-text("Send")'],
+    stop:['button[aria-label="Stop"]','button[aria-label="Stop generating"]'],
+    authorRole:'assistant',
+  }),
 });
 
 function providerForUrl(url) {
@@ -342,3 +351,4 @@ class ProviderChannel {
 }
 
 module.exports={ PROVIDERS, ProviderChannel, providerForUrl, endpointParts, poll, normalizedChatIdentity, sameChatIdentity };
+

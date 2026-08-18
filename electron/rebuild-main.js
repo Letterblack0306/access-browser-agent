@@ -1,5 +1,8 @@
 'use strict';
 
+const { IdePreferences } = require('../src/system/ide-preferences');
+const { ClineAuthSession } = require('../src/llm/ClineAuthSession');
+
 const fs=require('node:fs');
 const net=require('node:net');
 const path=require('node:path');
@@ -24,6 +27,43 @@ const diagnosticLog=new RuntimeDiagnosticLog({
 });
 setDiagnosticSink(diagnosticLog);
 global.__accessAgentDiagnosticLog=diagnosticLog;
+
+// Initialize auth session with persistence
+const userDataPath = app.getPath('userData');
+let clineAuthSession = new ClineAuthSession({
+  loadCore: () => import('@cline/core'),
+  preferencesPath: userDataPath,
+  onAuth: (info) => {
+    console.log('[Auth] Updated:', info?.email || 'unknown');
+  },
+  onProgress: (message) => {
+    console.log('[Auth] Progress:', message);
+  }
+});
+
+// Load persisted credentials immediately
+clineAuthSession.load().then(() => {
+  const status = clineAuthSession.status();
+  console.log('[Auth] Loaded:', status.authenticated ? 'Authenticated' : 'Not authenticated');
+}).catch(err => {
+  console.error('[Auth] Load failed:', err);
+});
+
+// Expose auth via IPC
+ipcMain.handle('auth:status', async () => {
+  return clineAuthSession.status();
+});
+
+ipcMain.handle('auth:login', async () => {
+  return await clineAuthSession.login();
+});
+
+ipcMain.handle('auth:logout', async () => {
+  return await clineAuthSession.logout();
+});
+
+// Store globally for other modules
+global.__accessAgentAuthSession = clineAuthSession;
 
 const machineEnvironment=new MachineEnvironment();
 const interactiveShell=machineEnvironment.resolveInteractiveShellSync();
@@ -199,3 +239,7 @@ loadActiveMain().catch(error=>{
   record({source:'main-wrapper',category:'startup',action:'active_main_load',phase:'failed',severity:'fatal',error});
   app.quit();
 });
+
+
+
+
