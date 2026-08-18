@@ -7,6 +7,14 @@ const END='=== ACCESS AGENT INSTRUCTION END ===';
 const RETRYABLE_DELIVERY_CODES=new Set([
   'COMPOSER_NOT_FOUND','PROVIDER_GENERATING','SEND_BUTTON_UNAVAILABLE','TARGET_TEMPORARILY_UNAVAILABLE',
 ]);
+// Pre-submit CDP transport failures (endpoint unreachable because the browser
+// died) mean the message was never sent. They are clearly transient, so a queued
+// terminal result must be retained as `result_queued` and retried once the
+// browser authority recovers, rather than failing closed as an ambiguous delivery.
+const RETRYABLE_TRANSPORT_CODES=new Set([
+  'ECONNREFUSED','ECONNRESET','EPIPE','ECONNABORTED','ETIMEDOUT',
+  'ERR_EMPTY_RESPONSE','ERR_SOCKET_CLOSED','UND_ERR_SOCKET','UND_ERR_CONNECT_TIMEOUT',
+]);
 const escape=value=>value.replace(/[.*+?^${}()|[\]\\]/gu,'\\$&');
 const ENVELOPE_GLOBAL=new RegExp(`${escape(START)}([\\s\\S]*?)${escape(END)}`,'gu');
 
@@ -126,7 +134,8 @@ function quickCommandResultEnvelope({instructionId,result,record=null}={}) {
 
 function nowIso(){return new Date().toISOString();}
 function hash(value){return createHash('sha256').update(String(value || '')).digest('hex');}
-function deliveryError(error){return{code:String(error?.code||'DELIVERY_FAILED'),message:error?.message||String(error)};}
+function deliveryError(error){return{code:String(error?.code||error?.cause?.code||'DELIVERY_FAILED'),message:error?.message||String(error)};}
+function isTransientTransportError(error){return RETRYABLE_TRANSPORT_CODES.has(String(error?.cause?.code||error?.code||'').toUpperCase());}
 function isSafeConsumedBaseline(record){
   return record?.state==='consumed' && ['delivery_response','first_start_historical_baseline','known_historical_baseline'].includes(String(record?.disposition||''));
 }
@@ -317,7 +326,7 @@ else throw this._recoveryError(existing,this.target,record);
       this.pending=null;this.lifecycle='waiting_for_instruction';this.error=null;this.delivery={...this.delivery,state:'accepted',acceptedAt:submittedAt,error:null};this._event('browser_relay.result_sent',{status:'waiting_for_browser',instructionId:pending.instructionId,targetId:target.targetId,providerId:target.providerId,delivery});
     }catch(error){
       if(generation!==this.generation||!this.running||this.pending!==pending)return;
-      const normalized=deliveryError(error);const elapsed=Date.now()-pending.queuedAtMs;const retryable=RETRYABLE_DELIVERY_CODES.has(normalized.code)&&pending.attempts<this.deliveryMaxAttempts&&elapsed<this.deliveryMaxElapsedMs;
+      const normalized=deliveryError(error);const elapsed=Date.now()-pending.queuedAtMs;const retryable=(RETRYABLE_DELIVERY_CODES.has(normalized.code)||RETRYABLE_TRANSPORT_CODES.has(normalized.code))&&pending.attempts<this.deliveryMaxAttempts&&elapsed<this.deliveryMaxElapsedMs;
       if(retryable){
         pending.nextAttemptAt=Date.now()+this.deliveryRetryMs*Math.min(pending.attempts,4);this.lifecycle='delivery_retry';this.delivery={...this.delivery,state:'retry_wait',error:normalized};
         if(pending.journalInput)this.journal.markResultQueued(pending.journalInput,{payload:pending.payload,deliveryAttempts:pending.attempts,queuedAtMs:pending.queuedAtMs,lastDeliveryError:normalized});
@@ -332,7 +341,38 @@ else throw this._recoveryError(existing,this.target,record);
   async _tick({schedule=true}={}){
     if(!this.running||this.checking){if(schedule)this._schedule();return;}this.checking=true;const generation=this.generation;
     try{
-      const endpoint=this.getEndpoint();if(!endpoint)throw new Error('Managed Chrome CDP endpoint is no longer available.');const target=this.activeTarget;if(!target)throw new Error('Browser relay has no active selected target.');const snapshot=await this.channel.snapshot(endpoint,target.targetId,target.providerId);assertSnapshotTarget(snapshot,target);if(generation!==this.generation||!this.running)return;
+      const target=this.activeTarget;if(!target)throw new Error('Browser relay has no active selected target.');
+      const endpoint=this.getEndpoint();
+      if(!endpoint){
+        // CDP authority is currently unavailable. Retain any queued terminal
+        // result so it survives CDP recovery; keep the loop alive to retry.
+        if(this.pending){
+          this.lifecycle='delivery_retry';
+          this.delivery={...this.delivery,state:'retry_wait',error:{code:'CDP_ENDPOINT_UNAVAILABLE',message:'Managed Chrome CDP endpoint is unavailable; queued terminal result retained.'}};
+        }else{
+          this.lifecycle='waiting_for_browser';
+        }
+        return;
+      }
+      let snapshot;
+      try{
+        snapshot=await this.channel.snapshot(endpoint,target.targetId,target.providerId);
+      }catch(error){
+        if(isTransientTransportError(error)){
+          // Dead/transient CDP transport. Never discard a queued terminal result
+          // and never invert to an ambiguous delivery failure before the message
+          // was sent; retain it and keep polling until the browser recovers.
+          if(this.pending){
+            this.lifecycle='delivery_retry';
+            this.delivery={...this.delivery,state:'retry_wait',error:deliveryError(error)};
+          }else{
+            this.lifecycle='waiting_for_browser';
+          }
+          return;
+        }
+        throw error;
+      }
+      assertSnapshotTarget(snapshot,target);if(generation!==this.generation||!this.running)return;
       if(this.pending){if(!snapshot.generating)await this._deliverPending({endpoint,target,generation});return;}if(snapshot.generating)return;
       const instruction=parseTransportTurn(snapshot,this.getWorkspaceRoot());if(!instruction)return;const digest=hash(instruction.transportKey);if(digest===this.lastHash)return;
       const loopState=this.loopScope?this.journal.getLoopState(this.loopScope):null;
@@ -383,4 +423,4 @@ else throw this._recoveryError(existing,this.target,record);
   _event(phase,data={}){this.onEvent({phase,timestamp:nowIso(),...data});}
 }
 
-module.exports={BrowserInstructionRelay,parseQuickCommandEnvelope,assistantTurnFromSnapshot,parseTransportTurn,resultEnvelope,quickCommandResultEnvelope,RETRYABLE_DELIVERY_CODES};
+module.exports={BrowserInstructionRelay,parseQuickCommandEnvelope,assistantTurnFromSnapshot,parseTransportTurn,resultEnvelope,quickCommandResultEnvelope,RETRYABLE_DELIVERY_CODES,RETRYABLE_TRANSPORT_CODES,isTransientTransportError};

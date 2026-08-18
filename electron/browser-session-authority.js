@@ -17,8 +17,7 @@ class BrowserSessionAuthority {
     this.error=null;
     this.browserTools=new BrowserToolRuntime({
       getEndpoint:async()=>{
-        const current=this.managedChrome.status();
-        const browser=current.lifecycle==='ready'&&current.endpoint?current:await this.managedChrome.start();
+        const browser=await this._ensureLiveBrowser();
         if(!browser?.endpoint){
           const error=new Error('Managed browser did not expose a CDP endpoint for general browser tools.');
           error.code='BROWSER_ENDPOINT_UNAVAILABLE';
@@ -114,11 +113,28 @@ class BrowserSessionAuthority {
     this._diag('browser_continuity_invalidated','failed',{reason},error||new Error(reason));
   }
 
+  async _ensureLiveBrowser(){
+    const current=this.managedChrome.status();
+    if(current.lifecycle==='ready'&&current.endpoint){
+      // Cached 'ready + endpoint' does not prove a live CDP control channel.
+      // Re-verify the exact endpoint before reuse, then invalidate and relaunch
+      // when it is stale (e.g. the Chrome process died after the last probe).
+      try{
+        await this.managedChrome.readyEndpoint();
+        return this.managedChrome.status();
+      }catch(staleError){
+        this._diag('ensure_browser','cached_endpoint_stale',{browser:current},staleError);
+        await this.managedChrome.stop();
+      }
+    }
+    return this.managedChrome.start();
+  }
+
   async ensureBrowser(){
     const current=this.managedChrome.status();
     this._diag('ensure_browser','start',{browser:current});
     try{
-      const browser=current.lifecycle==='ready'&&current.endpoint?current:await this.managedChrome.start();
+      const browser=await this._ensureLiveBrowser();
       if(!browser.endpoint||browser.lifecycle!=='ready')throw new Error('Managed Chrome did not become ready.');
       if(!browser.bootstrapTargetId&&browser.bootstrapUrl&&typeof this.managedChrome.claimBootstrapTarget==='function'){
         const targets=await this.channel.listTabs(browser.endpoint);
