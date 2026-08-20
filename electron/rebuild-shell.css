@@ -267,12 +267,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .editor-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px/1 var(--font-mono); color: var(--muted); }
 .editor-textarea { height: 100%; resize: none; border: 0; border-radius: 0; padding: 12px; font: 11px/1.55 var(--font-mono); outline: none; }
 
-.right-stack { padding: 9px; display: grid; gap: 8px; }
-.section {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: #111113;
-}
+.right-stack { padding: 0; display: flex; flex-direction: column; gap: 0; }
+.section { border-bottom: 1px solid var(--border-soft); }
+.section:last-child { border-bottom: 0; }
 .section-head { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 8px; border-bottom: 1px solid var(--border-soft); }
 .section-title { font-size: 9px; font-weight: 760; text-transform: uppercase; letter-spacing: .08em; color: #c7c7cc; }
 .section-body { padding: 8px; }
@@ -338,3 +335,48 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .resizer.bottom { grid-column: 3; }
   .execution-summary { display: none; }
 }
+
+.tool-duration{margin-left:auto;color:#6b7280;font-size:10px;}
+.text-red{color:#f87171;}
+.text-green{color:#34d399;}
+.plan-progress-fill.w-0{width:0%;}
+.plan-progress-fill.w-5{width:5%;}
+.plan-progress-fill.w-10{width:10%;}
+.plan-progress-fill.w-15{width:15%;}
+.plan-progress-fill.w-20{width:20%;}
+.plan-progress-fill.w-25{width:25%;}
+.plan-progress-fill.w-30{width:30%;}
+.plan-progress-fill.w-35{width:35%;}
+.plan-progress-fill.w-40{width:40%;}
+.plan-progress-fill.w-45{width:45%;}
+.plan-progress-fill.w-50{width:50%;}
+.plan-progress-fill.w-55{width:55%;}
+.plan-progress-fill.w-60{width:60%;}
+.plan-progress-fill.w-65{width:65%;}
+.plan-progress-fill.w-70{width:70%;}
+.plan-progress-fill.w-75{width:75%;}
+.plan-progress-fill.w-80{width:80%;}
+.plan-progress-fill.w-85{width:85%;}
+.plan-progress-fill.w-90{width:90%;}
+.plan-progress-fill.w-95{width:95%;}
+.plan-progress-fill.w-100{width:100%;}
+
+/* Tool calls: collapsed by default, only .open shows details */
+.tool-call-details{display:none;}
+.tool-call-details.open{display:block;}
+.tool-call-header{cursor:pointer;}
+
+/* Diff-shaped tool output */
+.diff-text{white-space:pre-wrap;font-family:monospace;}
+
+/* Collapsed reasoning row: muted until clicked open */
+.agent-reasoning-collapsed .message-bubble{opacity:0.6;}
+.agent-reasoning-collapsed .reasoning-content{display:none;}
+.agent-reasoning-collapsed.expanded .reasoning-content{display:block;}
+.agent-reasoning-collapsed.expanded .message-bubble{opacity:1;}
+.reasoning-toggle{cursor:pointer;display:flex;align-items:center;gap:6px;}
+.reasoning-arrow{font-size:10px;color:#6b7280;}
+
+
+#runtimeDetail, #providerDetail, dt:has(+ #runtimeDetail), dt:has(+ #providerDetail) { display: none; }
+dt:has(+ #loopDetail), #loopDetail { display: none; }

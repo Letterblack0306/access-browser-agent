@@ -14,6 +14,7 @@
     "start": "electron .",
     "start:trace": "node scripts/start-rebuild-trace.js",
     "eval:browser": "node test/browser-tool-evals.js",
+    "acceptance:governance-e2e": "node test/browser-governance-e2e-acceptance.js",
     "acceptance:ui": "node scripts/ui-state-driven-acceptance-v2.js",
     "acceptance:browser-loop": "npm run acceptance:ui",
     "acceptance:live-recovery-reconcile": "node scripts/live-recovery-reconciliation-acceptance.js",

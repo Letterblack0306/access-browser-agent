@@ -145,8 +145,8 @@ function assertSnapshotTarget(snapshot,target){
     error.code='TARGET_UNAVAILABLE';
     throw error;
   }
-  if(snapshot.provenance?.verifiedAssistant===false){
-    const error=new Error('The selected chat adapter did not provide assistant-message provenance.');
+  if(String(snapshot.text || '').trim() && snapshot.provenance?.verifiedAssistant !== true){
+    const error=new Error('An assistant turn was present without verified assistant-message provenance.');
     error.code='ASSISTANT_PROVENANCE_UNVERIFIED';
     throw error;
   }

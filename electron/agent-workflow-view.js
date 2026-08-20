@@ -184,7 +184,7 @@
     if (thinkingTimer) return;
     setStatus('thinking', 'Thinking...');
     var existing = document.getElementById('thinkingStream');
-    if (existing) existing.remove();
+    if (existing) { if (currentThinkingText) { existing.className = 'agent-message assistant'; existing.innerHTML = '<div class="message-bubble"><div class="message-header">Agent</div><div class="message-content">' + formatCodeBlocks(escapeHtml(currentThinkingText)) + '</div></div><div class="message-timestamp">' + new Date().toLocaleTimeString() + '</div>'; existing.removeAttribute('id'); } else { existing.remove(); } }
     currentThinkingText = '';
     elements.chatContainer.appendChild(renderThinkingStream(''));
     scrollToBottom();
@@ -247,6 +247,38 @@
     return div;
   }
 
+  const TOOL_LABELS = {
+    str_replace: 'Editing file',
+    create_file: 'Creating file',
+    view: 'Reading file',
+    bash_tool: 'Running command',
+    web_search: 'Searching the web',
+    web_fetch: 'Fetching page',
+  };
+
+  function humanToolLabel(tool) {
+    var base = TOOL_LABELS[tool.name] || tool.name;
+    var target = '';
+    if (tool.input) {
+      target = tool.input.path || tool.input.file_path || tool.input.command || tool.input.query || tool.input.url || '';
+    }
+    return target ? (base + ' — ' + String(target)) : base;
+  }
+
+  function looksLikeDiff(text) {
+    if (typeof text !== 'string') return false;
+    return /^(---|\+\+\+|@@ |diff --git)/m.test(text) && /^[+-]/m.test(text);
+  }
+
+  function renderDiffLines(text) {
+    return String(text).split('\n').map(function(line) {
+      var cls = line.startsWith('+') && !line.startsWith('+++') ? 'text-green'
+        : line.startsWith('-') && !line.startsWith('---') ? 'text-red'
+        : '';
+      return cls ? '<span class="' + cls + '">' + escapeHtml(line) + '</span>' : escapeHtml(line);
+    }).join('\n');
+  }
+
   function renderToolCall(tool) {
     var div = document.createElement('div');
     div.className = 'agent-tool-call';
@@ -255,17 +287,25 @@
     var statusLabel = tool.status === 'completed' ? 'OK' :
                      tool.status === 'error' ? 'ERR' :
                      tool.status === 'waiting' ? 'Wait' : 'Run';
+    // Collapsed by default; auto-expand only when there's an error to show.
+    var detailsOpenClass = tool.status === 'error' ? ' open' : '';
+    var outputText = tool.output && typeof tool.output === 'string' ? tool.output : tool.output ? JSON.stringify(tool.output, null, 2) : '';
+    var outputHtml = outputText
+      ? (looksLikeDiff(outputText)
+          ? '<pre class="diff-text">' + renderDiffLines(outputText) + '</pre>'
+          : '<pre>' + escapeHtml(outputText) + '</pre>')
+      : '';
     div.innerHTML =
       '<div class="tool-call-header" onclick="this.nextElementSibling.classList.toggle(\'open\')">' +
         '<span class="tool-icon">[T]</span>' +
-        '<span class="tool-name">' + escapeHtml(tool.name) + '</span>' +
+        '<span class="tool-name">' + escapeHtml(humanToolLabel(tool)) + '</span>' +
         '<span class="tool-status ' + statusClass + '">' + statusLabel + '</span>' +
-        '<span style="margin-left:auto;color:#6b7280;font-size:10px;">' + (tool.duration || '') + '</span>' +
+        '<span class="tool-duration">' + (tool.duration || '') + '</span>' +
       '</div>' +
-      '<div class="tool-call-details open">' +
+      '<div class="tool-call-details' + detailsOpenClass + '">' +
         (tool.input ? '<div class="detail-label">Input</div><pre>' + escapeHtml(JSON.stringify(tool.input, null, 2)) + '</pre>' : '') +
-        (tool.output ? '<div class="detail-label">Output</div><pre>' + escapeHtml(typeof tool.output === 'string' ? tool.output : JSON.stringify(tool.output, null, 2)) + '</pre>' : '') +
-        (tool.error ? '<div class="detail-label" style="color:#f87171;">Error</div><pre style="color:#f87171;">' + escapeHtml(tool.error) + '</pre>' : '') +
+        (outputHtml ? '<div class="detail-label">Output</div>' + outputHtml : '') +
+        (tool.error ? '<div class="detail-label text-red">Error</div><pre class="text-red">' + escapeHtml(tool.error) + '</pre>' : '') +
       '</div>';
     return div;
   }
@@ -289,7 +329,7 @@
         '<span class="plan-title">Plan</span>' +
         '<span class="plan-progress-text">' + (progress.completed || 0) + '/' + (progress.total || 0) + ' · ' + percent + '%</span>' +
       '</div>' +
-      '<div class="plan-progress-track"><div class="plan-progress-fill" style="width:' + percent + '%"></div></div>' +
+      '<div class="plan-progress-track"><div class="plan-progress-fill w-' + (Math.round(percent/5)*5) + '"></div></div>' +
       '<ol class="plan-steps">';
 
     var steps = plan && plan.steps ? plan.steps : [];
@@ -347,7 +387,7 @@
         '<span class="diff-icon">[D]</span>' +
         '<span class="diff-file">' + escapeHtml(review.filePath || review.fileKey || '') + '</span>' +
         '<span class="diff-badge diff-badge-' + statusLabel + '">' + escapeHtml(statusLabel) + '</span>' +
-        '<span class="diff-stats">+<span style="color:#34d399;">' + additions + '</span> −<span style="color:#f87171;">' + deletions + '</span> · ' + changes + ' changes</span>' +
+        '<span class="diff-stats">+<span class="text-green">' + additions + '</span> −<span class="text-red">' + deletions + '</span> · ' + changes + ' changes</span>' +
       '</div>';
 
     var body = '<div class="diff-preview-body">';
@@ -402,11 +442,16 @@
     if (el && !keepMessage) {
       el.remove();
     } else if (el && currentThinkingText) {
-      el.className = 'agent-message assistant';
+      // Collapse into a muted, click-to-expand reasoning row instead of a
+      // full-weight assistant message, so completed reasoning doesn't
+      // compete visually with tool calls and the final answer.
+      el.className = 'agent-message assistant agent-reasoning-collapsed';
       el.innerHTML =
         '<div class="message-bubble">' +
-          '<div class="message-header">Agent</div>' +
-          '<div class="message-content">' + formatCodeBlocks(escapeHtml(currentThinkingText)) + '</div>' +
+          '<div class="message-header reasoning-toggle" onclick="this.closest(\'.agent-reasoning-collapsed\').classList.toggle(\'expanded\')">' +
+            '<span>Reasoning</span><span class="reasoning-arrow">v</span>' +
+          '</div>' +
+          '<div class="message-content reasoning-content">' + formatCodeBlocks(escapeHtml(currentThinkingText)) + '</div>' +
         '</div>' +
         '<div class="message-timestamp">' + new Date().toLocaleTimeString() + '</div>';
       el.id = '';
@@ -444,6 +489,20 @@
 
   function completeToolCall(toolId, output) {
     updateToolCall(toolId, { status: 'completed', output: output });
+  }
+
+  // Called by handleAgentEvent's execution.tool.failed case. The producer may
+  // emit an object (approval denial, ok:false result, or thrown tool error),
+  // so normalize it to a readable string before storing it.
+  function failToolCall(toolId, error) {
+    var message =
+      error && typeof error === 'object'
+        ? String(error.message || error.error || error.code || 'Tool execution failed')
+        : String(error || 'Tool execution failed');
+    updateToolCall(toolId, {
+      status: 'error',
+      error: message,
+    });
   }
 
 
@@ -724,7 +783,7 @@
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   }
 
-  window.AgentWorkflowView = { mount, unmount };
+  if (typeof window !== 'undefined') window.AgentWorkflowView = { mount, unmount };
 
   function watchForModule() {
     if (document.querySelector('.module-agent') && !mounted) {
@@ -732,9 +791,25 @@
     }
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', watchForModule);
-  } else {
-    watchForModule();
+  // Browser-only bootstrap (full DOM + window). Skipped when the file is
+  // required from Node for unit tests of the pure render helpers, even if a
+  // minimal document stub is present.
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', watchForModule);
+    } else {
+      watchForModule();
+    }
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      humanToolLabel,
+      looksLikeDiff,
+      renderDiffLines,
+      renderToolCall,
+      stopThinking,
+      failToolCall,
+    };
   }
 })();

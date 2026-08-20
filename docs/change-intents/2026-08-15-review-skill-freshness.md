@@ -19,6 +19,7 @@ Make the repository's audit/review procedure an actually discoverable runtime sk
 - `skills/runtime-review/SKILL.md`
 - `skills/SKILL.md`
 - `skills/Audit SKILL.md`
+- `skills/deterministic-audit/SKILL.md` (renamed to `skills/evidence-boundary-audit/SKILL.md` and reframed)
 - `skills/governed-terminal/SKILL.md`
 - `test/skill-catalog-smoke.js`
 
@@ -60,6 +61,8 @@ The repository's review behavior is itself part of runtime quality. A stale or u
 
 Implementation is present on the rebuild branch: the canonical `skills/runtime-review/SKILL.md` was added, the two stale non-discoverable root audit files were removed, `skills/governed-terminal/SKILL.md` was refreshed to match the active machine-adaptive terminal contract, and `test/skill-catalog-smoke.js` was expanded to verify discoverability and loaded skill content. The change remains `in_progress` until exact-head repository validation passes.
 
+The previously registered `skills/deterministic-audit/SKILL.md` carried a conflicting audit philosophy (a "Deterministic Audit Agent", mental-simulation steps such as "Re-run validation mentally" and "Simulate repeated execution", a ten-run/identical-runs determinism expectation, and a strict `DETERMINISM RESULT` / `STABLE`-style output format). That skill was renamed to `skills/evidence-boundary-audit/SKILL.md` (name `evidence-boundary-audit`) and reframed as an evidence-driven boundary and reproducibility audit that is a specialization of the canonical evidence-first `runtime-review` methodology. It removes mental-simulation proof and false generic determinism, preserves the reasoning-agent boundary, replaces the strict output format with an evidence matrix (QUESTION / CURRENT OBSERVATION / SOURCE EVIDENCE / RUNTIME EVIDENCE / AUTHORITATIVE OBSERVABLE / EXPECTED RESULT / ACTUAL RESULT / FALSIFIER / CLASSIFICATION), enumerates the full allowed classification set, and states that skills are procedural knowledge only. `test/skill-catalog-smoke.js` now asserts discovery/loading of the renamed skill plus the evidence-first, no-mental-simulation, no-false-determinism, procedural-only methodology boundary.
+
 ## Validation evidence
 
-Exact-head repository validation has not yet reached the source/test phase because governance validation first identified missing mandatory intent sections. Those governance-document defects are being corrected before the same full `npm run check` is rerun. No source/test pass is claimed yet.
+Exact-head repository validation has not yet reached the source/test phase because governance validation first identified missing mandatory intent sections. Those governance-document defects were corrected and the full `npm run check` was rerun. The focused `node test/skill-catalog-smoke.js` passes on the renamed catalog: `skill-catalog-smoke PASS`. No claims about the broader Browser Agent runtime apply; this change covers the audit-skill / skill-layer only.

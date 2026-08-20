@@ -21,6 +21,15 @@ const PROVIDERS = Object.freeze({
     stop:['button[aria-label="Stop"]','button[aria-label="Stop generating"]'],
     authorRole:'assistant',
   }),
+  claude: Object.freeze({
+    name:'Claude',
+    hosts:new Set(['claude.ai','www.claude.ai']),
+    assistant:['[data-testid="transcript-row"][data-perf-row="assistant"] .font-claude-response','[data-testid="transcript-row"][data-perf-row="assistant"]'],
+    composer:['[data-testid="chat-input"]'],
+    send:['[data-testid="chat-input-send"]','button[aria-label="Send message"]'],
+    stop:['[data-testid="transcript-row"][data-perf-row-streaming="true"]'],
+    authorRole:'assistant',
+  }),
 });
 
 function providerForUrl(url) {
@@ -212,7 +221,7 @@ class ProviderChannel {
     const client=await this.cdpFactory({ ...endpointParts(endpoint), target:String(targetId) });
     try {
       await client.Runtime.enable();
-      const expression=`(()=>{const visible=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=="none"&&s.visibility!=="hidden"&&r.width>0&&r.height>0};const stop=${JSON.stringify(provider.stop)};let text="",messageIndex=-1,messageId="";for(const selector of ${JSON.stringify(provider.assistant)}){const nodes=[...document.querySelectorAll(selector)].filter(visible);for(let i=nodes.length-1;i>=0;i--){const value=(nodes[i].innerText||nodes[i].textContent||"").trim();if(value){const identityNode=nodes[i].closest?.("[data-message-id]")||nodes[i];text=value;messageIndex=i;messageId=String(identityNode?.getAttribute?.("data-message-id")||nodes[i].getAttribute?.("data-message-id")||nodes[i].id||"");break;}}if(text)break;}return {text,generating:stop.some(s=>visible(document.querySelector(s))),url:location.href,title:document.title,readyState:document.readyState,provenance:{authorRole:${JSON.stringify(provider.authorRole)},selectorFamily:${JSON.stringify(provider.assistant)},messageIndex,messageId,verifiedAssistant:true,messagePresent:Boolean(text)}};})()`;
+      const expression=`(()=>{const visible=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=="none"&&s.visibility!=="hidden"&&r.width>0&&r.height>0};const stop=${JSON.stringify(provider.stop)};let text="",messageIndex=-1,messageId="";for(const selector of ${JSON.stringify(provider.assistant)}){const nodes=[...document.querySelectorAll(selector)].filter(visible);for(let i=nodes.length-1;i>=0;i--){const value=(nodes[i].innerText||nodes[i].textContent||"").trim();if(value){const identityNode=nodes[i].closest?.("[data-message-id]")||nodes[i];text=value;messageIndex=i;messageId=String(identityNode?.getAttribute?.("data-message-id")||nodes[i].getAttribute?.("data-message-id")||nodes[i].id||"");break;}}if(text)break;}return {text,generating:stop.some(s=>visible(document.querySelector(s))),url:location.href,title:document.title,readyState:document.readyState,provenance:{authorRole:${JSON.stringify(provider.authorRole)},selectorFamily:${JSON.stringify(provider.assistant)},messageIndex,messageId,verifiedAssistant:Boolean(text),messagePresent:Boolean(text)}};})()`;
       const snapshot=await evaluateValue(client,expression);
       const observedProviderId=providerForUrl(snapshot.url);
       if (observedProviderId !== providerId) {

@@ -48,7 +48,7 @@ const {ProviderChannel,PROVIDERS,providerForUrl,normalizedChatIdentity,sameChatI
       enable:async()=>{},
       evaluate:async({expression})=>{
         snapshotExpression=String(expression||'');
-        return{result:{value:{text:'',generating:false,url:'https://chatgpt.com/c/abc',title:'Empty conversation',readyState:'complete',provenance:{authorRole:'assistant',selectorFamily:['[data-message-author-role="assistant"]'],messageIndex:-1,messageId:'',verifiedAssistant:true,messagePresent:false}}}};
+        return{result:{value:{text:'',generating:false,url:'https://chatgpt.com/c/abc',title:'Empty conversation',readyState:'complete',provenance:{authorRole:'assistant',selectorFamily:['[data-message-author-role="assistant"]'],messageIndex:-1,messageId:'',verifiedAssistant:false,messagePresent:false}}}};
       },
     },
     close:async()=>{},
@@ -59,7 +59,7 @@ const {ProviderChannel,PROVIDERS,providerForUrl,normalizedChatIdentity,sameChatI
   const snapshot=await snapshotChannel.snapshot('http://127.0.0.1:7330','empty','chatgpt');
   assert.match(snapshotExpression,/const visible=e=>\{[^]*?return s\.display!==[^]*?\};const stop=/u,'snapshot probe must close visible() before executing snapshot logic');
   assert.match(snapshotExpression,/data-message-id/u,'snapshot must attempt provider message identity before falling back to message index');
-  assert.equal(snapshot.provenance.verifiedAssistant,true,'trusted selector provenance is valid even when no assistant message exists yet');
+  assert.equal(snapshot.provenance.verifiedAssistant,false,'assistant-message provenance is derived: no assistant message present means unverified');
   assert.equal(snapshot.provenance.messagePresent,false);
   assert.equal(snapshot.text,'');
 

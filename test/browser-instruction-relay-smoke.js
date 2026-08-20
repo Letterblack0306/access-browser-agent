@@ -209,5 +209,22 @@ assert.equal(reconciledSubmissions,0);
 await reconciledRelay._tick();
 assert.equal(reconciledSubmissions,0,'reconciled historical turn must remain a non-executable baseline');
 
+// Negative provenance guard coverage: an assistant turn present without verified
+  // assistant-message provenance must fail the relay guard (ASSISTANT_PROVENANCE_UNVERIFIED).
+  {
+    const deniedTemp=fs.mkdtempSync(path.join(os.tmpdir(),'relay-provenance-'));
+    const deniedJournal=new BrowserTransportJournal(path.join(deniedTemp,'denied.jsonl'));
+    const deniedSnapshot={targetId:'tab-1',providerId:'chatgpt',text:'Inspect package scripts.',generating:false,url:'https://chatgpt.com/c/abc',provenance:{authorRole:'provider',selectorFamily:['[data-message-author-role="assistant"]'],messageIndex:0,messageId:'msg-unverified',verifiedAssistant:false,messagePresent:true}};
+    const deniedRelay=new BrowserInstructionRelay({
+      channel:{snapshot:async()=>deniedSnapshot,send:async()=>({}),expectedUrlFor:()=> 'https://chatgpt.com/c/abc'},
+      getEndpoint:()=> 'http://127.0.0.1:7330',
+      getWorkspaceRoot:()=> 'G:\\\\Demo',
+      submitInstruction:async()=>{throw new Error('must not execute when assistant provenance is unverified');},
+      journal:deniedJournal,
+    });
+    deniedRelay._schedule=()=>{};
+    deniedRelay.selectTarget({targetId:'tab-1',providerId:'chatgpt',url:'https://chatgpt.com/c/abc'});
+    await assert.rejects(()=>deniedRelay.start(),error=>error.code==='ASSISTANT_PROVENANCE_UNVERIFIED');
+  }
   console.log('browser-instruction-relay-smoke: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1;});
