@@ -160,7 +160,7 @@ class ClineAuthSession {
           providerMetadata: this.credentials.providerMetadata || {}
         }
       };
-      await prefs.save(updated);
+      await prefs.save(updated, { preserveClineAuth:false });
       this._persisted = true;
       this._notifyPersisted(updated.clineAuth);
     } catch (error) {
@@ -185,7 +185,7 @@ class ClineAuthSession {
           providerMetadata: {}
         }
       };
-      await prefs.save(updated);
+      await prefs.save(updated, { preserveClineAuth:false });
       this._notifyPersisted(updated.clineAuth);
     } catch (error) {
       this._persisted = true;
