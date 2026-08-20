@@ -126,6 +126,16 @@ class AgentRuntimeAdapter {
     const auth=providerKind === 'cline' ? this.clineAuth.status() : null;
 
     if (input.discoverOnly === true) {
+      if (input.probeReadiness === true) {
+        const selection=providerPreferences(input);
+        const readinessProbe=await probeProviderReadiness({ provider, selection, registry:this.providerCapabilities });
+        const health=provider.getHealth();
+        return {
+          provider:{ ...health, configured:providerKind === 'cline' ? Boolean(input.clineModel && (auth?.authenticated || process.env.CLINE_API_KEY)) : Boolean(provider.baseUrl), reachable:readinessProbe.ok, healthy:readinessProbe.ok, modelCount:0, failureReason:readinessProbe.agentReady ? null : readinessProbe.evidence?.failureReasons?.toolCalling || readinessProbe.evidence?.failureReasons?.completion || null, contactState:'checked', agentReady:readinessProbe.agentReady, agentReadiness:readinessProbe.readiness },
+          models:[], modelCatalog:[], auth, preferences:selection, error:null, readinessProbe,
+        };
+      }
+
       let models=[];let modelCatalog=[];let listError=null;
       try {
         if (typeof provider.listModelCatalog === 'function') {
@@ -165,49 +175,54 @@ class AgentRuntimeAdapter {
   async providerReadiness() {
     const provider=this.service?.provider;
     if (!provider) throw new Error('Provider runtime is unavailable.');
-    const checkedAt=new Date().toISOString();
-    const capabilities={ completion:'unknown', toolCalling:'unknown', structuredOutput:'unknown' };
-    const evidence={ checkedAt, model:null, providerRequestIds:[], failureReasons:{} };
-    let text='';
-
-    try {
-      const completion=await provider.complete({ messages:[{ role:'user', content:'Provider readiness check. Reply with exactly READY. Do not call tools.' }], tools:[] });
-      text=String(completion?.content || '').trim();evidence.model=completion?.model || null;
-      if (completion?.providerRequestId) evidence.providerRequestIds.push(completion.providerRequestId);
-      capabilities.completion=text === 'READY' ? 'verified' : 'failed';
-      if (text !== 'READY') evidence.failureReasons.completion=`Expected READY; observed ${text || '(empty)'}.`;
-    } catch (error) { capabilities.completion='failed';evidence.failureReasons.completion=error?.message || String(error); }
-
-    if (capabilities.completion === 'verified') {
-      try {
-        const probeTool={ type:'function', function:{ name:'diagnostic_probe', description:'Non-mutating readiness probe. Call this tool exactly once with value PING.', parameters:{ type:'object', properties:{ value:{ type:'string', const:'PING' } }, required:['value'], additionalProperties:false } } };
-        const toolResult=await provider.complete({ messages:[{ role:'user', content:'Agent capability probe. You MUST call diagnostic_probe exactly once with value PING. Do not answer with prose instead.' }], tools:[probeTool] });
-        if (toolResult?.providerRequestId) evidence.providerRequestIds.push(toolResult.providerRequestId);
-        const call=Array.isArray(toolResult?.toolCalls) ? toolResult.toolCalls.find(item => item.name === 'diagnostic_probe') : null;
-        capabilities.toolCalling=call?.arguments?.value === 'PING' ? 'verified' : 'unsupported';
-        if (capabilities.toolCalling !== 'verified') evidence.failureReasons.toolCalling='Selected model did not emit the required diagnostic tool call.';
-      } catch (error) { capabilities.toolCalling='unsupported';evidence.failureReasons.toolCalling=error?.message || String(error); }
-
-      try {
-        const responseFormat={ type:'json_schema', json_schema:{ name:'readiness', strict:true, schema:{ type:'object', properties:{ ready:{type:'boolean'} }, required:['ready'], additionalProperties:false } } };
-        const structured=await provider.complete({ messages:[{ role:'user', content:'Return JSON with ready=true.' }], tools:[], responseFormat });
-        if (structured?.providerRequestId) evidence.providerRequestIds.push(structured.providerRequestId);
-        let parsed=null;try { parsed=JSON.parse(String(structured?.content || '')); } catch {}
-        capabilities.structuredOutput=parsed?.ready === true ? 'verified' : 'unsupported';
-        if (capabilities.structuredOutput !== 'verified') evidence.failureReasons.structuredOutput='Structured JSON schema output was not verified.';
-      } catch (error) { capabilities.structuredOutput='unsupported';evidence.failureReasons.structuredOutput=error?.message || String(error); }
-    }
-
-    const agentReady=capabilities.completion === 'verified' && capabilities.toolCalling === 'verified';
-    const readiness=normalizeReadiness({ checkedAt, model:evidence.model || provider.model || null, agentReady, capabilities, failureReasons:evidence.failureReasons }, provider.model || null);
-    this.providerCapabilities.set(this.providerSelection || {}, readiness);
-    emitDiagnostic({ source:'provider-readiness', category:'provider', action:'capability_probe', phase:agentReady ? 'success' : 'unverified', severity:agentReady ? 'info' : 'warn', data:{ capabilities, evidence, agentReady } });
-    return { ok:capabilities.completion === 'verified', agentReady, text, summary:text, model:evidence.model, capabilities, evidence, readiness };
+    return probeProviderReadiness({ provider, selection:this.providerSelection || {}, registry:this.providerCapabilities });
   }
 
   intervene(text) { return this.run({ instruction:text }); }
   receipts() { return this.service.receipts(); }
   executionTrace(sessionId) { return this.service.executionTrace(sessionId); }
+}
+
+async function probeProviderReadiness({ provider, selection = {}, registry }) {
+  if (!provider) throw new Error('Provider runtime is unavailable.');
+  const checkedAt=new Date().toISOString();
+  const capabilities={ completion:'unknown', toolCalling:'unknown', structuredOutput:'unknown' };
+  const evidence={ checkedAt, model:null, providerRequestIds:[], failureReasons:{} };
+  let text='';
+
+  try {
+    const completion=await provider.complete({ messages:[{ role:'user', content:'Provider readiness check. Reply with exactly READY. Do not call tools.' }], tools:[] });
+    text=String(completion?.content || '').trim();evidence.model=completion?.model || null;
+    if (completion?.providerRequestId) evidence.providerRequestIds.push(completion.providerRequestId);
+    capabilities.completion=text === 'READY' ? 'verified' : 'failed';
+    if (text !== 'READY') evidence.failureReasons.completion=`Expected READY; observed ${text || '(empty)'}.`;
+  } catch (error) { capabilities.completion='failed';evidence.failureReasons.completion=error?.message || String(error); }
+
+  if (capabilities.completion === 'verified') {
+    try {
+      const probeTool={ type:'function', function:{ name:'diagnostic_probe', description:'Non-mutating readiness probe. Call this tool exactly once with value PING.', parameters:{ type:'object', properties:{ value:{ type:'string', const:'PING' } }, required:['value'], additionalProperties:false } } };
+      const toolResult=await provider.complete({ messages:[{ role:'user', content:'Agent capability probe. You MUST call diagnostic_probe exactly once with value PING. Do not answer with prose instead.' }], tools:[probeTool] });
+      if (toolResult?.providerRequestId) evidence.providerRequestIds.push(toolResult.providerRequestId);
+      const call=Array.isArray(toolResult?.toolCalls) ? toolResult.toolCalls.find(item => item.name === 'diagnostic_probe') : null;
+      capabilities.toolCalling=call?.arguments?.value === 'PING' ? 'verified' : 'unsupported';
+      if (capabilities.toolCalling !== 'verified') evidence.failureReasons.toolCalling='Selected model did not emit the required diagnostic tool call.';
+    } catch (error) { capabilities.toolCalling='unsupported';evidence.failureReasons.toolCalling=error?.message || String(error); }
+
+    try {
+      const responseFormat={ type:'json_schema', json_schema:{ name:'readiness', strict:true, schema:{ type:'object', properties:{ ready:{type:'boolean'} }, required:['ready'], additionalProperties:false } } };
+      const structured=await provider.complete({ messages:[{ role:'user', content:'Return JSON with ready=true.' }], tools:[], responseFormat });
+      if (structured?.providerRequestId) evidence.providerRequestIds.push(structured.providerRequestId);
+      let parsed=null;try { parsed=JSON.parse(String(structured?.content || '')); } catch {}
+      capabilities.structuredOutput=parsed?.ready === true ? 'verified' : 'unsupported';
+      if (capabilities.structuredOutput !== 'verified') evidence.failureReasons.structuredOutput='Structured JSON schema output was not verified.';
+    } catch (error) { capabilities.structuredOutput='unsupported';evidence.failureReasons.structuredOutput=error?.message || String(error); }
+  }
+
+  const agentReady=capabilities.completion === 'verified' && capabilities.toolCalling === 'verified';
+  const readiness=normalizeReadiness({ checkedAt, model:evidence.model || provider.model || null, agentReady, capabilities, failureReasons:evidence.failureReasons }, provider.model || null);
+  registry?.set(selection, readiness);
+  emitDiagnostic({ source:'provider-readiness', category:'provider', action:'capability_probe', phase:agentReady ? 'success' : 'unverified', severity:agentReady ? 'info' : 'warn', data:{ capabilities, evidence, agentReady, selection:providerPreferences(selection) } });
+  return { ok:capabilities.completion === 'verified', agentReady, text, summary:text, model:evidence.model, capabilities, evidence, readiness };
 }
 
 function unverifiedReadiness(model = null) {
@@ -239,4 +254,4 @@ function providerPreferences(input = {}) {
 }
 function positiveInteger(value) { const number=Number(value);return Number.isInteger(number) && number > 0 ? number : null; }
 
-module.exports={ AgentRuntimeAdapter, providerPreferences, providerIdentity, unverifiedReadiness };
+module.exports={ AgentRuntimeAdapter, providerPreferences, providerIdentity, unverifiedReadiness, probeProviderReadiness };
