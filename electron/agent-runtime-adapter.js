@@ -189,7 +189,7 @@ class AgentRuntimeAdapter {
       } catch (error) { capabilities.toolCalling='unsupported';evidence.failureReasons.toolCalling=error?.message || String(error); }
 
       try {
-        const responseFormat={ type:'json_schema', json_schema:{ name:'readiness', strict:true, schema:{ type:'object', properties:{ ready:{type:'boolean'} }, required:['ready'], additionalProperties:false } } } };
+        const responseFormat={ type:'json_schema', json_schema:{ name:'readiness', strict:true, schema:{ type:'object', properties:{ ready:{type:'boolean'} }, required:['ready'], additionalProperties:false } } };
         const structured=await provider.complete({ messages:[{ role:'user', content:'Return JSON with ready=true.' }], tools:[], responseFormat });
         if (structured?.providerRequestId) evidence.providerRequestIds.push(structured.providerRequestId);
         let parsed=null;try { parsed=JSON.parse(String(structured?.content || '')); } catch {}
