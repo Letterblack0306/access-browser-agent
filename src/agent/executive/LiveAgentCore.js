@@ -303,6 +303,23 @@ function toProviderMessage(message) {
   return null;
 }
 
+const HISTORICAL_TOOL_RESULT_MAX_CHARS = 500;
+
+function compactHistoricalToolResult(message) {
+  if (message?.role !== 'tool') return message;
+  const content = String(message.content || '');
+  if (content.length <= HISTORICAL_TOOL_RESULT_MAX_CHARS) return message;
+  return {
+    ...message,
+    content:JSON.stringify({
+      truncatedHistoricalToolResult:true,
+      originalChars:content.length,
+      sha256:createHash('sha256').update(content).digest('hex'),
+      preview:content.slice(0,350),
+    }),
+  };
+}
+
 function compactDurableMessages(messages) {
   const compacted = [];
   for (const source of messages) {
@@ -310,7 +327,7 @@ function compactDurableMessages(messages) {
     if (!message) continue;
     const previous = compacted.at(-1);
     if (message.role === 'user' && previous?.role === 'user' && previous.content === message.content) continue;
-    compacted.push(message);
+    compacted.push(compactHistoricalToolResult(message));
   }
   return compacted;
 }
