@@ -102,8 +102,17 @@ class IdePreferences {
       throw new Error(`Could not read IDE preferences: ${error.message}`);
     }
   }
-  async save(input) {
-    const value = normalize(input);
+  async save(input, { preserveClineAuth = true } = {}) {
+    let candidate = input || {};
+    if (preserveClineAuth) {
+      try {
+        const durable = await this.load();
+        const durableAccess = String(durable?.clineAuth?.accessToken || '');
+        const requestedAccess = String(candidate?.clineAuth?.accessToken || '');
+        if (durableAccess && !requestedAccess) candidate = { ...candidate, clineAuth: durable.clineAuth };
+      } catch {}
+    }
+    const value = normalize(candidate);
     await fs.mkdir(path.dirname(this.file), { recursive: true });
     const temporary = `${this.file}.${process.pid}.tmp`;
     await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
