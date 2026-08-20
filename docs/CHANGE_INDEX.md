@@ -34,6 +34,7 @@
 | `2026-08-16-r3-preload-recovery-ordering` | `completed` | Route relay start through BrowserSessionAuthority so unresolved local recovery is visible before provider-readiness failure without allowing WAITING. | `docs/change-intents/2026-08-16-r3-preload-recovery-ordering.md` |
 
 | `2026-08-17-innosetup-installer-packaging` | `in_progress` | Package the Access Browser Agent Electron application into a distributable Windows setup via `electron-builder` output compiled with Inno Setup, and record install-smoke runtime evidence against the canonical R4 branch. | `docs/change-intents/2026-08-17-innosetup-installer-packaging.md` |
+| `2026-08-19-chain-break-audit-negative-context` | `completed` | Restore the `chain-break-audit.js` router-unreachability check so a `doesNotMatch(...)` absence-assertion is not blanket-allowlisted but distinguished structurally as evidence for unreachability. | `docs/change-intents/2026-08-19-chain-break-audit-negative-context.md` |
 
 ## Status values
 
