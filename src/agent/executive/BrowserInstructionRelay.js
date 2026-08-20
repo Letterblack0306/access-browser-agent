@@ -393,17 +393,9 @@ else throw this._recoveryError(existing,this.target,record);
       const loopState=this.loopScope?this.journal.getLoopState(this.loopScope):null;
       const responseOwnership=loopState?.deliveryResponse||null;
       if(responseOwnership?.state==='pending'){
-        const responseInput=this._journalInput(instruction,target);
-        const existingResponse=this.journal.get(responseInput);
-        if(existingResponse&&existingResponse.state!=='consumed')throw this._recoveryError(instruction,target,existingResponse.state);
-        this.journal.observe(responseInput);
-        this.journal.markConsumed(responseInput,{disposition:'delivery_response',sourceInstructionId:responseOwnership.sourceInstructionId||null,sourceTransportKey:responseOwnership.sourceTransportKey||null,resultRecordSha256:responseOwnership.resultRecordSha256||null});
-        this.lastHash=digest;
-        const consumedAt=nowIso();
-        this.journal.markLoopProgress(this.loopScope,{lastInstructionHash:digest,lastInstructionId:instruction.instructionId,deliveryResponse:{...responseOwnership,state:'consumed',responseInstructionId:instruction.instructionId,responseTransportKey:instruction.transportKey,consumedAt}});
-        this.lifecycle='waiting_for_instruction';this.error=null;
-        this._event('browser_relay.delivery_response_consumed',{status:'waiting_for_browser',instructionId:responseOwnership.sourceInstructionId||null,responseInstructionId:instruction.instructionId,targetId:target.targetId,providerId:target.providerId,detail:'Consumed the provider assistant response causally owned by the preceding Access result delivery without local re-execution.'});
-        return;
+        const resolvedAt=nowIso();
+        this.journal.markLoopProgress(this.loopScope,{deliveryResponse:{...responseOwnership,state:'resolved',responseInstructionId:instruction.instructionId,responseTransportKey:instruction.transportKey,resolvedAt}});
+        this._event('browser_relay.delivery_response_resolved',{status:'running',instructionId:responseOwnership.sourceInstructionId||null,responseInstructionId:instruction.instructionId,targetId:target.targetId,providerId:target.providerId,detail:'Resolved the preceding Access result delivery boundary and preserved the newly observed assistant turn for normal instruction execution.'});
       }
       const journalInput=this._journalInput(instruction,target);const existing=this.journal.get(journalInput);
       if(existing?.state==='delivered'||isSafeConsumedBaseline(existing)){this.lastHash=digest;return;}
