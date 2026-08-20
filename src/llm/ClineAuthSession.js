@@ -3,13 +3,14 @@
 const { IdePreferences } = require('../system/ide-preferences');
 
 class ClineAuthSession {
-  constructor({ loadCore, onAuth, onProgress, onPrompt, preferencesPath = '' } = {}) {
+  constructor({ loadCore, onAuth, onProgress, onPrompt, onPersist, preferencesPath = '' } = {}) {
     this.loadCore = loadCore || (() => import('@cline/core'));
     this.onAuth = typeof onAuth === 'function' ? onAuth : () => {};
     this.onProgress = typeof onProgress === 'function' ? onProgress : () => {};
     this.onPrompt = typeof onPrompt === 'function'
       ? onPrompt
       : async prompt => String(prompt?.defaultValue || '');
+    this.onPersist = typeof onPersist === 'function' ? onPersist : () => {};
     this.preferencesPath = preferencesPath;
     this.credentials = null;
     this.lastError = null;
@@ -127,6 +128,22 @@ class ClineAuthSession {
     return this.status();
   }
 
+  _notifyPersisted(clineAuth) {
+    try {
+      const result = this.onPersist({
+        clineAuth: {
+          accessToken: String(clineAuth?.accessToken || ''),
+          refreshToken: String(clineAuth?.refreshToken || ''),
+          expiresAt: Number(clineAuth?.expiresAt || 0),
+          accountId: String(clineAuth?.accountId || ''),
+          email: String(clineAuth?.email || ''),
+          providerMetadata: { ...(clineAuth?.providerMetadata || {}) },
+        },
+      });
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch {}
+  }
+
   async _saveCredentials() {
     if (!this.preferencesPath) return;
     try {
@@ -145,6 +162,7 @@ class ClineAuthSession {
       };
       await prefs.save(updated);
       this._persisted = true;
+      this._notifyPersisted(updated.clineAuth);
     } catch (error) {
       this._persisted = false;
       // Credentials remain usable in memory even if persistence fails
@@ -168,6 +186,7 @@ class ClineAuthSession {
         }
       };
       await prefs.save(updated);
+      this._notifyPersisted(updated.clineAuth);
     } catch (error) {
       this._persisted = true;
       this.lastError = 'Could not clear persisted Cline credentials: ' + (error?.message || String(error));
