@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { ClineAuthSession } = require('../src/llm/ClineAuthSession');
+const { IdePreferences } = require('../src/system/ide-preferences');
 const {
   ClineLlmsProvider,
   toClineConversation,
@@ -65,6 +66,10 @@ async function testAuthPersistence() {
   };
 
   try {
+    const preferences = new IdePreferences(directory);
+    await preferences.save({ providerKind:'cline', clineModel:'initial-model' });
+    const staleBeforeLogin = await preferences.load();
+
     const first = new ClineAuthSession({
       preferencesPath: directory,
       loadCore: async () => core,
@@ -72,6 +77,11 @@ async function testAuthPersistence() {
     const login = await first.login();
     assert.equal(login.authenticated, true);
     assert.equal(login.persisted, true);
+
+    await preferences.save({ ...staleBeforeLogin, clineModel:'later-model' });
+    const afterStaleSave = await preferences.load();
+    assert.equal(afterStaleSave.clineAuth.accessToken, 'persist-access', 'stale settings save must not erase newer durable Cline auth');
+    assert.equal(afterStaleSave.clineModel, 'later-model');
 
     const second = new ClineAuthSession({
       preferencesPath: directory,
@@ -86,6 +96,8 @@ async function testAuthPersistence() {
     const logout = await second.logout();
     assert.equal(logout.authenticated, false);
     assert.equal(logout.persisted, false);
+    const afterLogout = await preferences.load();
+    assert.equal(afterLogout.clineAuth.accessToken, '', 'explicit logout must remain authoritative');
 
     const third = new ClineAuthSession({
       preferencesPath: directory,
