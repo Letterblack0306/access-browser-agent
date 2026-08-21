@@ -50,6 +50,8 @@ class BrowserToolRuntime {
     isProtectedUrl = null,
     readinessTimeoutMs = 7000,
     pollIntervalMs = 100,
+    settlementQuietMs = 250,
+    settlementTimeoutMs = 2000,
     textLimit = DEFAULT_TEXT_LIMIT,
     interactiveLimit = DEFAULT_INTERACTIVE_LIMIT,
   } = {}) {
@@ -59,6 +61,8 @@ class BrowserToolRuntime {
     this.isProtectedUrl = typeof isProtectedUrl === 'function' ? isProtectedUrl : () => false;
     this.readinessTimeoutMs = Math.max(500, Number(readinessTimeoutMs) || 7000);
     this.pollIntervalMs = Math.max(25, Number(pollIntervalMs) || 100);
+    this.settlementQuietMs = Math.max(50, Number(settlementQuietMs) || 250);
+    this.settlementTimeoutMs = Math.max(this.settlementQuietMs + this.pollIntervalMs, Number(settlementTimeoutMs) || 2000);
     this.textLimit = Math.max(1000, Number(textLimit) || DEFAULT_TEXT_LIMIT);
     this.interactiveLimit = Math.max(10, Math.min(500, Number(interactiveLimit) || DEFAULT_INTERACTIVE_LIMIT));
     this.ownedTargets = new Map();
@@ -150,6 +154,53 @@ class BrowserToolRuntime {
     throw error;
   }
 
+  async _startSettlementObserver(client) {
+    return evaluateValue(client, `(()=>{const key='__accessAgentSettlement';const prior=globalThis[key];try{prior?.observer?.disconnect?.();}catch{}const tracker={startedAt:Date.now(),lastMutationAt:Date.now(),revision:0,observer:null};if(typeof MutationObserver==='function'&&document.documentElement){const observer=new MutationObserver(()=>{tracker.revision+=1;tracker.lastMutationAt=Date.now();});observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});tracker.observer=observer;}globalThis[key]=tracker;return{startedAt:tracker.startedAt,url:location.href,title:document.title,readyState:document.readyState};})()`);
+  }
+
+  async _waitForSettlement(client) {
+    const deadline = Date.now() + this.settlementTimeoutMs;
+    let last = null;
+    do {
+      try {
+        last = await evaluateValue(client, `(()=>{const tracker=globalThis.__accessAgentSettlement||null;return{url:location.href,title:document.title,readyState:document.readyState,settlementStartedAt:tracker?.startedAt||null,settlementLastMutationAt:tracker?.lastMutationAt||null,settlementRevision:tracker?.revision||0};})()`);
+        if (last?.url) this._assertAllowedUrl(last.url);
+        const ready = last?.readyState === 'complete' || last?.readyState === 'interactive';
+        const startedAt = Number(last?.settlementStartedAt) || 0;
+        const lastMutationAt = Number(last?.settlementLastMutationAt) || startedAt;
+        const quietSince = Math.max(startedAt, lastMutationAt);
+        if (ready && quietSince > 0 && Date.now() - quietSince >= this.settlementQuietMs) {
+          return {
+            status:'settled',
+            url:last.url || null,
+            title:last.title || null,
+            readyState:last.readyState || null,
+            revision:Number(last.settlementRevision) || 0,
+            observedMutation:(Number(last.settlementRevision) || 0) > 0,
+            quietMs:this.settlementQuietMs,
+            timeoutMs:this.settlementTimeoutMs,
+          };
+        }
+      } catch (error) {
+        if (error?.code === 'BROWSER_PROTECTED_CONVERSATION') throw error;
+      }
+      if (Date.now() >= deadline) break;
+      await wait(this.pollIntervalMs);
+    } while (Date.now() <= deadline);
+    const error = new Error(`Browser action did not settle within ${this.settlementTimeoutMs} ms${last?.url ? ` at ${last.url}` : ''}.`);
+    error.code = 'BROWSER_SETTLEMENT_TIMEOUT';
+    error.classification = 'BROWSER';
+    error.details = { ...last, quietMs:this.settlementQuietMs, timeoutMs:this.settlementTimeoutMs };
+    throw error;
+  }
+
+  async _waitReadyAndSettle(client) {
+    const ready = await this._waitReady(client);
+    if (ready?.url) this._assertAllowedUrl(ready.url);
+    await this._startSettlementObserver(client);
+    return this._waitForSettlement(client);
+  }
+
   async open(input = {}) {
     const url = this._assertAllowedUrl(input.url);
     const endpoint = await this._endpoint();
@@ -164,9 +215,8 @@ class BrowserToolRuntime {
     } finally {
       await client.close();
     }
-    const ready = await this._withTarget(targetId, client => this._waitReady(client));
-    if (ready?.url) this._assertAllowedUrl(ready.url);
-    return { ok:true, targetId, url:String(ready?.url || url), title:String(ready?.title || ''), readyState:ready?.readyState || null, owned:true };
+    const settlement = await this._withTarget(targetId, client => this._waitReadyAndSettle(client));
+    return { ok:true, targetId, url:String(settlement?.url || url), title:String(settlement?.title || ''), readyState:settlement?.readyState || null, owned:true, settlement };
   }
 
   async tabs() {
@@ -203,10 +253,9 @@ class BrowserToolRuntime {
         error.classification = 'BROWSER';
         throw error;
       }
-      const ready = await this._waitReady(client);
-      if (ready?.url) this._assertAllowedUrl(ready.url);
+      const settlement = await this._waitReadyAndSettle(client);
       this.currentTargetId = targetId;
-      return { ok:true, targetId, requestedUrl:url, url:String(ready?.url || url), title:String(ready?.title || ''), readyState:ready?.readyState || null };
+      return { ok:true, targetId, requestedUrl:url, url:String(settlement?.url || url), title:String(settlement?.title || ''), readyState:settlement?.readyState || null, settlement };
     });
   }
 
@@ -226,22 +275,23 @@ class BrowserToolRuntime {
     const ref = String(input.ref || '').trim();
     if (!ref) return { ok:false, code:'BROWSER_REF_REQUIRED', error:'Element ref is required. Take a fresh browserSnapshot first.' };
     return this._withTarget(input.targetId, async (client, targetId) => {
+      await this._startSettlementObserver(client);
       const expression = `(()=>{const ref=${JSON.stringify(ref)};const e=document.querySelector('[data-access-agent-ref="'+CSS.escape(ref)+'"]');if(!e)return{ok:false,code:'BROWSER_REF_STALE',error:'Element ref is missing; take a fresh snapshot.'};const s=getComputedStyle(e),r=e.getBoundingClientRect();if(s.display==='none'||s.visibility==='hidden'||r.width<=0||r.height<=0)return{ok:false,code:'BROWSER_ELEMENT_NOT_VISIBLE',error:'Element is not visible.'};if(e.disabled||e.getAttribute('aria-disabled')==='true')return{ok:false,code:'BROWSER_ELEMENT_DISABLED',error:'Element is disabled.'};const tag=e.tagName.toLowerCase(),type=tag==='input'?String(e.type||'').toLowerCase():tag==='button'?String(e.getAttribute('type')||'submit').toLowerCase():'';if(tag==='input'&&type==='file')return{ok:false,code:'BROWSER_FILE_PICKER_BLOCKED',error:'File picker controls are not supported by browserClick.'};if((tag==='input'&&['submit','image'].includes(type))||(tag==='button'&&type==='submit'))return{ok:false,code:'BROWSER_FORM_SUBMIT_BLOCKED',error:'Implicit form submission is blocked. Navigate directly or use a non-submit control.'};if(tag==='a'&&e.hasAttribute('download'))return{ok:false,code:'BROWSER_DOWNLOAD_BLOCKED',error:'Download links are not supported by browserClick.'};const before=location.href;const info={tag,role:e.getAttribute('role')||null,name:(e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||e.value||'').replace(/\\s+/gu,' ').trim().slice(0,300),href:tag==='a'?e.href:null};if(tag==='a'&&e.href)return{ok:true,method:'navigate-anchor',before,element:info,navigateUrl:e.href};e.click();return{ok:true,method:'dom-click',before,element:info};})()`;
       const result = await evaluateValue(client, expression) || {};
       if (!result.ok) return result;
+      let settlement;
       if (result.method === 'navigate-anchor' && result.navigateUrl) {
         const url = this._assertAllowedUrl(result.navigateUrl);
         const response = await client.Page.navigate({ url });
         if (response?.errorText) return { ok:false, code:'BROWSER_NAVIGATION_FAILED', error:`Browser navigation failed: ${response.errorText}` };
-        const ready = await this._waitReady(client);
-        if (ready?.url) this._assertAllowedUrl(ready.url);
+        settlement = await this._waitReadyAndSettle(client);
       } else {
-        await wait(100);
+        settlement = await this._waitForSettlement(client);
       }
-      const observed = await evaluateValue(client, '({url:location.href,title:document.title,readyState:document.readyState})').catch(() => ({}));
+      const observed = settlement || {};
       if (observed?.url) this._assertAllowedUrl(observed.url);
       this.currentTargetId = targetId;
-      return { ok:true, targetId, ref, method:result.method, element:result.element || null, beforeUrl:result.before || null, url:observed?.url || null, title:observed?.title || null, readyState:observed?.readyState || null, verifiedActionDispatch:true, downstreamOutcome:'UNVERIFIED' };
+      return { ok:true, targetId, ref, method:result.method, element:result.element || null, beforeUrl:result.before || null, url:observed?.url || null, title:observed?.title || null, readyState:observed?.readyState || null, verifiedActionDispatch:true, downstreamOutcome:'SETTLED', settlement };
     });
   }
 
