@@ -505,6 +505,24 @@
     });
   }
 
+  // Preserve terminal-state truth at the renderer boundary. The producer can
+  // emit plan.completed(status=blocked), and its current status bridge can
+  // encode the same blocked outcome as agent.status(status=failed,
+  // detail="Task blocked: ..."). Do not collapse either into complete/failed.
+  function terminalStatePresentation(status, detail, scope) {
+    var normalized = String(status || '').toLowerCase();
+    var message = String(detail || '').trim();
+    var labelScope = scope === 'plan' ? 'Plan' : 'Task';
+    var producerBlocked =
+      normalized === 'blocked' ||
+      (normalized === 'failed' && /^task blocked\b/i.test(message));
+
+    if (producerBlocked) return ['error', message || (labelScope + ' blocked')];
+    if (normalized === 'failed') return ['error', message || (labelScope + ' failed')];
+    if (normalized === 'completed') return ['completed', message || (labelScope + ' complete')];
+    if (normalized === 'stopped' || normalized === 'cancelled') return ['idle', message || 'Stopped'];
+    return null;
+  }
 
   function handleAgentEvent(event) {
     var phase = event.phase || event.type || '';
@@ -523,17 +541,20 @@
         break;
 
       case 'agent.status':
-        // FIX #7: Render the generalized AGENT_STATUS transitions so the UI
-        // reflects runtime state (planning, executing, reviewing, completed...).
+        // Render terminal truth before the generalized running-state map.
+        // In particular, preserve producer-side blocked detail even when the
+        // legacy AGENT_STATUS value is "failed".
         if (event.status) {
+          const terminal = terminalStatePresentation(event.status, event.detail, 'task');
+          if (terminal) {
+            setStatus(terminal[0], terminal[1]);
+            break;
+          }
           const statusMap = {
             planning: ['thinking', 'Planning...'],
             awaiting_plan_approval: ['thinking', 'Plan created — awaiting approval...'],
             executing: ['running', 'Executing plan...'],
             reviewing: ['thinking', 'Reviewing file change...'],
-            completed: ['completed', 'Task complete'],
-            failed: ['error', 'Task failed'],
-            stopped: ['idle', 'Stopped'],
           };
           const mapped = statusMap[event.status] || ['running', event.detail || 'Working...'];
           setStatus(mapped[0], mapped[1]);
@@ -580,7 +601,10 @@
 
       case 'plan.completed':
         if (event.plan) upsertPlanChecklist(event.plan);
-        setStatus('completed', 'Plan complete');
+        {
+          const terminal = terminalStatePresentation(event.status || 'completed', event.detail, 'plan');
+          setStatus(terminal[0], terminal[1]);
+        }
         break;
 
       case 'execution.tool.preview':
@@ -637,7 +661,6 @@
         if (event.toolCallId) updateToolCall(event.toolCallId, { status: 'waiting' });
         setStatus('thinking', 'Waiting for approval...');
         break;
-
 
       case 'agent.stream':
         if (event.text) {
@@ -810,6 +833,7 @@
       renderToolCall,
       stopThinking,
       failToolCall,
+      terminalStatePresentation,
     };
   }
 })();
