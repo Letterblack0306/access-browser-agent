@@ -28,6 +28,8 @@ EXECUTION BOUNDARY:
 - Do not finish after merely restating the request. Report completion only when your available evidence supports it.
 - If essential information/capability remains unavailable after bounded discovery, return a precise blocker and what is missing.`;
 
+const NO_PROGRESS_NOTICE = '[RUNTIME_NO_STATE_CHANGE: Observation state is identical to the previous step. No material output delta was detected. Do not repeat the same action unless state transitions or your strategy changes.]';
+
 function compact(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === 'string') return value.length > 12000 ? `${value.slice(0,12000)}… (truncated)` : value;
@@ -140,6 +142,9 @@ class LiveAgentCore {
     const emitExecutionEvent = typeof stepContext.emitExecutionEvent === 'function' ? stepContext.emitExecutionEvent : async () => {};
     const emitAgentEvent = typeof stepContext.emitAgentEvent === 'function' ? stepContext.emitAgentEvent : async () => {};
     let toolCalls = 0;
+    let lastObservationFingerprint = null;
+    let duplicateObservationCount = 0;
+    let transientRuntimeNotice = null;
     const runtimeEvidence = [];
 
     try {
@@ -148,8 +153,12 @@ class LiveAgentCore {
           return { status:'stopped', reason:'Stopped by user.', summary:'Stopped by user.', evidence:runtimeEvidence, consumeInstructions:false };
         }
 
+        const providerMessages = transientRuntimeNotice
+          ? [...messages, { role:'system', content:transientRuntimeNotice }]
+          : messages;
+        transientRuntimeNotice = null;
         const response = await this.provider.complete({
-          messages,
+          messages:providerMessages,
           tools:this.registry.openAiTools(),
           signal:aborter.signal,
         });
@@ -244,10 +253,6 @@ class LiveAgentCore {
           const stored = await emitExecutionEvent(completed);
           runtimeEvidence.push(runtimeEvidenceRecord(stored?.data || completed, output, result?.evidence));
 
-          // A terminal tool result must terminate the current objective
-          // immediately as BLOCKED instead of decaying into repeated calls
-          // until the tool budget is exhausted. The terminal observation is
-          // already durable in the conversation and execution evidence above.
           const terminal = result?.output?.terminal === true || result?.output?.error?.terminal === true;
           if (terminal) {
             const terminalCode = String(output?.code || output?.error?.code || 'TERMINAL');
@@ -260,6 +265,32 @@ class LiveAgentCore {
               evidence:runtimeEvidence,
               consumeInstructions:false,
             };
+          }
+
+          const fingerprint = observationFingerprint(call.name, call.arguments, output);
+          if (fingerprint === lastObservationFingerprint) {
+            duplicateObservationCount += 1;
+            const reconciliation = {
+              toolName:String(call.name || ''),
+              duplicateCount:duplicateObservationCount,
+              observationHash:fingerprint,
+              status:duplicateObservationCount >= 2 ? 'stagnation' : 'no_state_change',
+            };
+            await emitAgentEvent('runtime.no_progress', reconciliation);
+            if (duplicateObservationCount >= 2) {
+              return {
+                status:'blocked',
+                blocker:'no_progress_stagnation',
+                reason:`The same tool observation repeated ${duplicateObservationCount} consecutive times without material state change. Runtime reconciliation stopped the loop before another provider completion.`,
+                summary:'BLOCKED: repeated identical observations produced no material progress.',
+                evidence:runtimeEvidence,
+                consumeInstructions:false,
+              };
+            }
+            transientRuntimeNotice = NO_PROGRESS_NOTICE;
+          } else {
+            lastObservationFingerprint = fingerprint;
+            duplicateObservationCount = 0;
           }
 
           // Important: failed/non-found/unavailable tool observations are now
@@ -336,6 +367,22 @@ function durableToolContent(output) {
   const serialized = JSON.stringify(compact(output));
   if (serialized.length <= 6000) return serialized;
   return JSON.stringify({ truncated:true, sha256:createHash('sha256').update(serialized).digest('hex'), preview:`${serialized.slice(0,5400)}…` });
+}
+
+function stableValue(value) {
+  if (value === null || value === undefined) return value ?? null;
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, stableValue(value[key])]));
+}
+
+function observationFingerprint(toolName, args, output) {
+  const normalized = JSON.stringify({
+    toolName:String(toolName || ''),
+    args:stableValue(args || {}),
+    output:stableValue(compact(output)),
+  });
+  return createHash('sha256').update(normalized).digest('hex');
 }
 
 function baseExecutionEvent(stepContext, toolCall, phase) {
@@ -425,4 +472,5 @@ module.exports = {
   missingEvidence,
   capabilityPrompt,
   runtimeEvidenceRecord,
+  observationFingerprint,
 };
