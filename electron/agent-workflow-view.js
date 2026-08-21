@@ -287,7 +287,6 @@
     var statusLabel = tool.status === 'completed' ? 'OK' :
                      tool.status === 'error' ? 'ERR' :
                      tool.status === 'waiting' ? 'Wait' : 'Run';
-    // Collapsed by default; auto-expand only when there's an error to show.
     var detailsOpenClass = tool.status === 'error' ? ' open' : '';
     var outputText = tool.output && typeof tool.output === 'string' ? tool.output : tool.output ? JSON.stringify(tool.output, null, 2) : '';
     var outputHtml = outputText
@@ -309,10 +308,6 @@
       '</div>';
     return div;
   }
-
-  // ============================================================
-  // PLAN CHECKLIST — Cline-style task progress in the chat
-  // ============================================================
 
   function renderPlanChecklist(plan) {
     var card = document.createElement('div');
@@ -356,9 +351,8 @@
     if (!plan) return;
     var existing = document.getElementById('agentPlanCard');
     var rendered = renderPlanChecklist(plan);
-    if (existing) {
-      existing.replaceWith(rendered);
-    } else {
+    if (existing) existing.replaceWith(rendered);
+    else {
       if (elements.emptyState) elements.emptyState.hidden = true;
       elements.chatContainer.appendChild(rendered);
     }
@@ -366,22 +360,16 @@
     scrollToBottom();
   }
 
-  // ============================================================
-  // DIFF PREVIEW — Cline-style file change preview
-  // ============================================================
-
   function renderDiffPreview(review) {
     if (!review) return null;
     var div = document.createElement('div');
     div.className = 'agent-diff-preview';
     div.dataset.fileKey = review.fileKey || '';
-    var action = review.action || 'change';
     var statusLabel = review.status || 'proposed';
     var stats = review.diffStats || {};
     var additions = stats.additions || 0;
     var deletions = stats.deletions || 0;
     var changes = stats.changes || 0;
-
     var header =
       '<div class="diff-preview-header">' +
         '<span class="diff-icon">[D]</span>' +
@@ -389,18 +377,11 @@
         '<span class="diff-badge diff-badge-' + statusLabel + '">' + escapeHtml(statusLabel) + '</span>' +
         '<span class="diff-stats">+<span class="text-green">' + additions + '</span> −<span class="text-red">' + deletions + '</span> · ' + changes + ' changes</span>' +
       '</div>';
-
     var body = '<div class="diff-preview-body">';
-    if (review.diff) {
-      body += '<pre class="diff-text">' + escapeHtml(review.diff) + '</pre>';
-    } else {
-      body += '<pre class="diff-text">No diff available.</pre>';
-    }
-    if (review.diffStats && review.diffStats.truncated) {
-      body += '<div class="diff-truncated-note">Diff truncated — showing first section.</div>';
-    }
+    if (review.diff) body += '<pre class="diff-text">' + escapeHtml(review.diff) + '</pre>';
+    else body += '<pre class="diff-text">No diff available.</pre>';
+    if (review.diffStats && review.diffStats.truncated) body += '<div class="diff-truncated-note">Diff truncated — showing first section.</div>';
     body += '</div>';
-
     div.innerHTML = header + body;
     return div;
   }
@@ -411,9 +392,8 @@
     var existing = elements.chatContainer.querySelector('.agent-diff-preview[data-file-key="' + fileKey + '"]');
     var rendered = renderDiffPreview(review);
     if (!rendered) return;
-    if (existing) {
-      existing.replaceWith(rendered);
-    } else {
+    if (existing) existing.replaceWith(rendered);
+    else {
       if (elements.emptyState) elements.emptyState.hidden = true;
       elements.chatContainer.appendChild(rendered);
     }
@@ -425,26 +405,16 @@
     if (!review) return;
     var fileKey = review.fileKey || '';
     var existing = elements.chatContainer.querySelector('.agent-diff-preview[data-file-key="' + fileKey + '"]');
-    if (!existing) {
-      upsertDiffPreview(review);
-      return;
-    }
+    if (!existing) { upsertDiffPreview(review); return; }
     var badge = existing.querySelector('.diff-badge');
-    if (badge) {
-      badge.className = 'diff-badge diff-badge-verified';
-      badge.textContent = 'verified';
-    }
+    if (badge) { badge.className = 'diff-badge diff-badge-verified'; badge.textContent = 'verified'; }
   }
 
   function stopThinking(keepMessage) {
     if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
     var el = document.getElementById('thinkingStream');
-    if (el && !keepMessage) {
-      el.remove();
-    } else if (el && currentThinkingText) {
-      // Collapse into a muted, click-to-expand reasoning row instead of a
-      // full-weight assistant message, so completed reasoning doesn't
-      // compete visually with tool calls and the final answer.
+    if (el && !keepMessage) el.remove();
+    else if (el && currentThinkingText) {
       el.className = 'agent-message assistant agent-reasoning-collapsed';
       el.innerHTML =
         '<div class="message-bubble">' +
@@ -457,9 +427,7 @@
       el.id = '';
       currentThinkingText = '';
       scrollToBottom();
-    } else if (el) {
-      el.remove();
-    }
+    } else if (el) el.remove();
     currentThinkingText = '';
   }
 
@@ -479,44 +447,24 @@
     if (!tool) return;
     Object.assign(tool, updates);
     var el = elements.chatContainer.querySelector('[data-tool-id="' + toolId + '"]');
-    if (el) {
-      var newEl = renderToolCall(tool);
-      el.replaceWith(newEl);
-      scrollToBottom();
-    }
+    if (el) { var newEl = renderToolCall(tool); el.replaceWith(newEl); scrollToBottom(); }
     updateStatusBar();
   }
 
-  function completeToolCall(toolId, output) {
-    updateToolCall(toolId, { status: 'completed', output: output });
-  }
+  function completeToolCall(toolId, output) { updateToolCall(toolId, { status: 'completed', output: output }); }
 
-  // Called by handleAgentEvent's execution.tool.failed case. The producer may
-  // emit an object (approval denial, ok:false result, or thrown tool error),
-  // so normalize it to a readable string before storing it.
   function failToolCall(toolId, error) {
-    var message =
-      error && typeof error === 'object'
-        ? String(error.message || error.error || error.code || 'Tool execution failed')
-        : String(error || 'Tool execution failed');
-    updateToolCall(toolId, {
-      status: 'error',
-      error: message,
-    });
+    var message = error && typeof error === 'object'
+      ? String(error.message || error.error || error.code || 'Tool execution failed')
+      : String(error || 'Tool execution failed');
+    updateToolCall(toolId, { status: 'error', error: message });
   }
 
-  // Preserve terminal-state truth at the renderer boundary. The producer can
-  // emit plan.completed(status=blocked), and its current status bridge can
-  // encode the same blocked outcome as agent.status(status=failed,
-  // detail="Task blocked: ..."). Do not collapse either into complete/failed.
   function terminalStatePresentation(status, detail, scope) {
     var normalized = String(status || '').toLowerCase();
     var message = String(detail || '').trim();
     var labelScope = scope === 'plan' ? 'Plan' : 'Task';
-    var producerBlocked =
-      normalized === 'blocked' ||
-      (normalized === 'failed' && /^task blocked\b/i.test(message));
-
+    var producerBlocked = normalized === 'blocked' || (normalized === 'failed' && /^task blocked\b/i.test(message));
     if (producerBlocked) return ['error', message || (labelScope + ' blocked')];
     if (normalized === 'failed') return ['error', message || (labelScope + ' failed')];
     if (normalized === 'completed') return ['completed', message || (labelScope + ' complete')];
@@ -524,8 +472,13 @@
     return null;
   }
 
+  function eventDispatchKey(event) {
+    if (!event || typeof event !== 'object') return '';
+    return String(event.type || event.phase || '');
+  }
+
   function handleAgentEvent(event) {
-    var phase = event.phase || event.type || '';
+    var phase = eventDispatchKey(event);
 
     switch (phase) {
       case 'session.created':
@@ -535,21 +488,13 @@
         if (elements.stopBtn) elements.stopBtn.disabled = false;
         if (event.instruction) addMessage(renderUserMessage(event.instruction));
         break;
-
       case 'agent.intent':
         if (event.detail) { startThinking(); updateThinking(event.detail); }
         break;
-
       case 'agent.status':
-        // Render terminal truth before the generalized running-state map.
-        // In particular, preserve producer-side blocked detail even when the
-        // legacy AGENT_STATUS value is "failed".
         if (event.status) {
           const terminal = terminalStatePresentation(event.status, event.detail, 'task');
-          if (terminal) {
-            setStatus(terminal[0], terminal[1]);
-            break;
-          }
+          if (terminal) { setStatus(terminal[0], terminal[1]); break; }
           const statusMap = {
             planning: ['thinking', 'Planning...'],
             awaiting_plan_approval: ['thinking', 'Plan created — awaiting approval...'],
@@ -560,223 +505,85 @@
           setStatus(mapped[0], mapped[1]);
         }
         break;
-
-      case 'plan.started':
-        setStatus('running', 'Planning...');
-        startThinking();
-        break;
-
-      case 'plan.created':
-        stopThinking(true);
-        if (event.plan) upsertPlanChecklist(event.plan);
-        setStatus('thinking', 'Plan created — awaiting approval...');
-        break;
-
-      case 'plan.approved':
-        setStatus('running', 'Executing plan...');
-        if (event.plan) upsertPlanChecklist(event.plan);
-        break;
-
-      case 'plan.rejected':
-        stopThinking(true);
-        setStatus('idle', 'Plan rejected');
-        break;
-
-      case 'plan.step.running':
-        if (event.plan) upsertPlanChecklist(event.plan);
-        else if (event.step) {
-          var stepLabel = event.step.title || 'Working...';
-          setStatus('running', stepLabel);
-        }
-        break;
-
-      case 'plan.step.completed':
-        if (event.plan) upsertPlanChecklist(event.plan);
-        break;
-
-      case 'plan.step.failed':
-        if (event.plan) upsertPlanChecklist(event.plan);
-        setStatus('error', 'Step failed');
-        break;
-
+      case 'plan.started': setStatus('running', 'Planning...'); startThinking(); break;
+      case 'plan.created': stopThinking(true); if (event.plan) upsertPlanChecklist(event.plan); setStatus('thinking', 'Plan created — awaiting approval...'); break;
+      case 'plan.approved': setStatus('running', 'Executing plan...'); if (event.plan) upsertPlanChecklist(event.plan); break;
+      case 'plan.rejected': stopThinking(true); setStatus('idle', 'Plan rejected'); break;
+      case 'plan.step.running': if (event.plan) upsertPlanChecklist(event.plan); else if (event.step) setStatus('running', event.step.title || 'Working...'); break;
+      case 'plan.step.completed': if (event.plan) upsertPlanChecklist(event.plan); break;
+      case 'plan.step.failed': if (event.plan) upsertPlanChecklist(event.plan); setStatus('error', 'Step failed'); break;
       case 'plan.completed':
         if (event.plan) upsertPlanChecklist(event.plan);
-        {
-          const terminal = terminalStatePresentation(event.status || 'completed', event.detail, 'plan');
-          setStatus(terminal[0], terminal[1]);
-        }
+        { const terminal = terminalStatePresentation(event.status || 'completed', event.detail, 'plan'); setStatus(terminal[0], terminal[1]); }
         break;
-
-      case 'execution.tool.preview':
-        stopThinking(true);
-        if (event.review) upsertDiffPreview(event.review);
-        setStatus('thinking', 'Reviewing file change...');
-        break;
-
-      case 'execution.tool.applied':
-        if (event.review) markDiffApplied(event.review);
-        setStatus('running', 'Change applied');
-        break;
-
-      case 'provider_connecting':
-        setStatus('thinking', event.detail || 'Checking provider connection...');
-        break;
-
-      case 'provider_reconnecting':
-        setStatus('thinking', event.detail || 'Reconnecting to provider...');
-        break;
-
-      case 'provider_ready':
-        setStatus('thinking', event.detail || 'Preparing task...');
-        break;
-
-      case 'provider_unavailable':
-        isAgentRunning = false;
-        stopThinking(true);
-        setStatus('error', event.detail || 'Provider is unavailable');
-        if (elements.stopBtn) elements.stopBtn.disabled = true;
-        break;
-
+      case 'execution.tool.preview': stopThinking(true); if (event.review) upsertDiffPreview(event.review); setStatus('thinking', 'Reviewing file change...'); break;
+      case 'execution.tool.applied': if (event.review) markDiffApplied(event.review); setStatus('running', 'Change applied'); break;
+      case 'provider_connecting': setStatus('thinking', event.detail || 'Checking provider connection...'); break;
+      case 'provider_reconnecting': setStatus('thinking', event.detail || 'Reconnecting to provider...'); break;
+      case 'provider_ready': setStatus('thinking', event.detail || 'Preparing task...'); break;
+      case 'provider_unavailable': isAgentRunning = false; stopThinking(true); setStatus('error', event.detail || 'Provider is unavailable'); if (elements.stopBtn) elements.stopBtn.disabled = true; break;
       case 'execution.tool.started':
         stopThinking(true);
-        addToolCall(
-          event.toolCallId || ('tool-' + Date.now()),
-          event.tool || 'unknown',
-          event.inputSummary || event.input || {}
-        );
-        setStatus('running', 'Using ' + (event.tool || 'tool') + '...');
+        addToolCall(event.toolCallId || ('tool-' + Date.now()), event.tool || event.toolName || 'unknown', event.inputSummary || event.input || {});
+        setStatus('running', 'Using ' + (event.tool || event.toolName || 'tool') + '...');
         break;
-
-      case 'execution.tool.completed':
-        if (event.toolCallId) completeToolCall(event.toolCallId, event.outputSummary || event.output || 'Done');
-        setStatus('running', 'Processing...');
-        break;
-
-      case 'execution.tool.failed':
-        if (event.toolCallId) failToolCall(event.toolCallId, event.error || 'Tool execution failed');
-        setStatus('error', 'Tool failed');
-        break;
-
-      case 'execution.tool.approval_requested':
-        if (event.toolCallId) updateToolCall(event.toolCallId, { status: 'waiting' });
-        setStatus('thinking', 'Waiting for approval...');
-        break;
-
+      case 'execution.tool.completed': if (event.toolCallId) completeToolCall(event.toolCallId, event.outputSummary || event.output || 'Done'); setStatus('running', 'Processing...'); break;
+      case 'execution.tool.failed': if (event.toolCallId) failToolCall(event.toolCallId, event.error || 'Tool execution failed'); setStatus('error', 'Tool failed'); break;
+      case 'execution.tool.approval_requested': if (event.toolCallId) updateToolCall(event.toolCallId, { status: 'waiting' }); setStatus('thinking', 'Waiting for approval...'); break;
       case 'agent.stream':
         if (event.text) {
-          var streamText = event.text;
           var msg = elements.chatContainer.querySelector('.agent-message.assistant[data-streaming="true"]');
-          if (!msg) {
-            msg = renderAssistantMessage('', true);
-            addMessage(msg);
-            if (elements.emptyState) elements.emptyState.hidden = true;
-          }
+          if (!msg) { msg = renderAssistantMessage('', true); addMessage(msg); if (elements.emptyState) elements.emptyState.hidden = true; }
           var msgContent = msg.querySelector('.message-content');
-          if (msgContent) { msgContent.innerHTML = formatCodeBlocks(escapeHtml(streamText)); scrollToBottom(); }
+          if (msgContent) { msgContent.innerHTML = formatCodeBlocks(escapeHtml(event.text)); scrollToBottom(); }
         }
         break;
-
       case 'session.completed':
       case 'turn_completed':
       case 'objective.completed':
-        isAgentRunning = false;
-        stopThinking(true);
-        setStatus('completed', 'Done');
-        if (elements.stopBtn) elements.stopBtn.disabled = true;
+        isAgentRunning = false; stopThinking(true); setStatus('completed', 'Done'); if (elements.stopBtn) elements.stopBtn.disabled = true;
         if (event.summary || event.detail) {
           var summary = event.summary || event.detail;
           var existing = elements.chatContainer.querySelector('.agent-message.assistant[data-streaming="true"]');
-          if (existing) {
-            existing.dataset.streaming = 'false';
-            var headerSpan = existing.querySelector('.message-header span:last-child');
-            if (headerSpan) headerSpan.remove();
-          } else {
-            addMessage(renderAssistantMessage(summary, false));
-          }
+          if (existing) { existing.dataset.streaming = 'false'; var headerSpan = existing.querySelector('.message-header span:last-child'); if (headerSpan) headerSpan.remove(); }
+          else addMessage(renderAssistantMessage(summary, false));
         }
         break;
-
       case 'session.stopped':
-      case 'session.cancelled':
-        isAgentRunning = false;
-        stopThinking(true);
-        setStatus('idle', 'Stopped');
-        if (elements.stopBtn) elements.stopBtn.disabled = true;
-        break;
-
-      case 'step.failed':
-        isAgentRunning = false;
-        stopThinking(true);
-        setStatus('error', 'Step failed');
-        if (elements.stopBtn) elements.stopBtn.disabled = true;
-        break;
-
-      default:
-        break;
+      case 'session.cancelled': isAgentRunning = false; stopThinking(true); setStatus('idle', 'Stopped'); if (elements.stopBtn) elements.stopBtn.disabled = true; break;
+      case 'step.failed': isAgentRunning = false; stopThinking(true); setStatus('error', 'Step failed'); if (elements.stopBtn) elements.stopBtn.disabled = true; break;
+      default: break;
     }
   }
 
   function setupInputHandlers() {
     if (!elements.input || !elements.sendBtn) return;
-    elements.input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey && !isAgentRunning) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
+    elements.input.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey && !isAgentRunning) { e.preventDefault(); sendMessage(); } });
     elements.sendBtn.addEventListener('click', sendMessage);
-    if (elements.clearBtn) {
-      elements.clearBtn.addEventListener('click', function() {
-        elements.chatContainer.replaceChildren();
-        var empty = document.createElement('div');
-        empty.className = 'agent-empty-state';
-        empty.id = 'agentEmptyState';
-        empty.innerHTML =
-          '<div class="empty-icon">Agent</div>' +
-          '<h3>Ready to help</h3>' +
-          '<p>Ask me anything about your workspace.</p>';
-        elements.chatContainer.appendChild(empty);
-        elements.emptyState = empty;
-        messageCount = 0;
-        toolCalls.clear();
-        updateStatusBar();
-      });
-    }
-    if (elements.stopBtn) {
-      elements.stopBtn.addEventListener('click', async function() {
-        if (window.accessIde && window.accessIde.agentStop) {
-          await window.accessIde.agentStop();
-        }
-        stopThinking(true);
-        setStatus('idle', 'Stopped');
-        elements.stopBtn.disabled = true;
-        isAgentRunning = false;
-      });
-    }
+    if (elements.clearBtn) elements.clearBtn.addEventListener('click', function() {
+      elements.chatContainer.replaceChildren();
+      var empty = document.createElement('div');
+      empty.className = 'agent-empty-state'; empty.id = 'agentEmptyState';
+      empty.innerHTML = '<div class="empty-icon">Agent</div><h3>Ready to help</h3><p>Ask me anything about your workspace.</p>';
+      elements.chatContainer.appendChild(empty); elements.emptyState = empty; messageCount = 0; toolCalls.clear(); updateStatusBar();
+    });
+    if (elements.stopBtn) elements.stopBtn.addEventListener('click', async function() {
+      if (window.accessIde && window.accessIde.agentStop) await window.accessIde.agentStop();
+      stopThinking(true); setStatus('idle', 'Stopped'); elements.stopBtn.disabled = true; isAgentRunning = false;
+    });
   }
 
   async function sendMessage() {
     var text = (elements.input ? elements.input.value : '').trim();
     if (!text || isAgentRunning) return;
     if (elements.input) elements.input.value = '';
-    addMessage(renderUserMessage(text));
-    isAgentRunning = true;
-    setCurrentTask(text);
-    setStatus('thinking', 'Checking provider connection...');
+    addMessage(renderUserMessage(text)); isAgentRunning = true; setCurrentTask(text); setStatus('thinking', 'Checking provider connection...');
     if (window.accessIde && window.accessIde.agentRun) {
       try {
         const result = await window.accessIde.agentRun({ instruction: text });
-        if (result && result.ok === false && result.error) {
-          isAgentRunning = false;
-          stopThinking(true);
-          setStatus('error', String(result.error));
-          if (elements.stopBtn) elements.stopBtn.disabled = true;
-        }
+        if (result && result.ok === false && result.error) { isAgentRunning = false; stopThinking(true); setStatus('error', String(result.error)); if (elements.stopBtn) elements.stopBtn.disabled = true; }
       } catch (error) {
-        isAgentRunning = false;
-        stopThinking(true);
-        setStatus('error', error && error.message ? error.message : 'Could not start the task');
-        if (elements.stopBtn) elements.stopBtn.disabled = true;
+        isAgentRunning = false; stopThinking(true); setStatus('error', error && error.message ? error.message : 'Could not start the task'); if (elements.stopBtn) elements.stopBtn.disabled = true;
       }
     }
   }
@@ -784,18 +591,9 @@
   function mount() {
     if (mounted) return;
     var container = document.querySelector('.module-agent');
-    if (!container) {
-      console.warn('AgentWorkflowView: .module-agent not found, retrying...');
-      setTimeout(mount, 100);
-      return;
-    }
-    container.innerHTML = template();
-    mounted = true;
-    initElements();
-    setupInputHandlers();
-    if (window.accessIde) {
-      unsubscribeAgent = window.accessIde.onAgentEvent(handleAgentEvent);
-    }
+    if (!container) { console.warn('AgentWorkflowView: .module-agent not found, retrying...'); setTimeout(mount, 100); return; }
+    container.innerHTML = template(); mounted = true; initElements(); setupInputHandlers();
+    if (window.accessIde) unsubscribeAgent = window.accessIde.onAgentEvent(handleAgentEvent);
   }
 
   function unmount() {
@@ -808,32 +606,14 @@
 
   if (typeof window !== 'undefined') window.AgentWorkflowView = { mount, unmount };
 
-  function watchForModule() {
-    if (document.querySelector('.module-agent') && !mounted) {
-      mount();
-    }
-  }
+  function watchForModule() { if (document.querySelector('.module-agent') && !mounted) mount(); }
 
-  // Browser-only bootstrap (full DOM + window). Skipped when the file is
-  // required from Node for unit tests of the pure render helpers, even if a
-  // minimal document stub is present.
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', watchForModule);
-    } else {
-      watchForModule();
-    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchForModule);
+    else watchForModule();
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-      humanToolLabel,
-      looksLikeDiff,
-      renderDiffLines,
-      renderToolCall,
-      stopThinking,
-      failToolCall,
-      terminalStatePresentation,
-    };
+    module.exports = { humanToolLabel, looksLikeDiff, renderDiffLines, renderToolCall, stopThinking, failToolCall, terminalStatePresentation, eventDispatchKey };
   }
 })();
