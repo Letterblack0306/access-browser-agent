@@ -128,9 +128,9 @@ async function run() {
     getEndpoint:async()=>endpoint,
     isProtectedUrl:url=>String(url).replace(/\/$/u,'')===protectedUrl,
     readinessTimeoutMs:500,
-    pollIntervalMs:10,
-    settlementQuietMs:80,
-    settlementTimeoutMs:600,
+    pollIntervalMs:25,
+    settlementQuietMs:200,
+    settlementTimeoutMs:800,
   });
 
   await assert.rejects(()=>runtime.navigate({targetId:'chat-transport',url:'https://example.com/'}),error=>error?.code==='BROWSER_TARGET_NOT_OWNED');
@@ -140,6 +140,7 @@ async function run() {
   const opened=await runtime.open({url:'https://example.com/start'});
   assert.equal(opened.ok,true);
   assert.equal(opened.owned,true);
+  assert.equal(opened.settlement?.status,'settled');
   assert.match(opened.targetId,/^browser-/u);
 
   await assert.rejects(()=>runtime.navigate({targetId:opened.targetId,url:protectedUrl}),error=>error?.code==='BROWSER_PROTECTED_CONVERSATION');
