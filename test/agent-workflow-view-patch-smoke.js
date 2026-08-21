@@ -15,6 +15,7 @@ global.document = { createElement: () => new FakeElement() };
 const assert = require('node:assert/strict');
 const {
   humanToolLabel, looksLikeDiff, renderDiffLines, renderToolCall, failToolCall,
+  terminalStatePresentation,
 } = require('../electron/agent-workflow-view.js');
 
 // --- humanToolLabel ---
@@ -55,5 +56,20 @@ assert.match(diffDiv.innerHTML, /text-green">\+new/);
 // --- failToolCall exists (this was the ReferenceError bug). updateToolCall
 // lives in the closure and is DOM-backed, so it is not invoked here. ---
 assert.equal(typeof failToolCall, 'function', 'failToolCall must be defined (this was the ReferenceError bug)');
+
+// --- terminal-state UI truth ---
+assert.deepEqual(
+  terminalStatePresentation('blocked', '', 'task'),
+  ['error', 'Task blocked'],
+  'blocked task must remain visibly BLOCKED instead of becoming complete/failed',
+);
+assert.deepEqual(
+  terminalStatePresentation('failed', 'Task blocked: governance stopped execution.', 'task'),
+  ['error', 'Task blocked: governance stopped execution.'],
+  'legacy failed status with explicit blocked detail must preserve blocked truth',
+);
+assert.deepEqual(terminalStatePresentation('failed', '', 'plan'), ['error', 'Plan failed']);
+assert.deepEqual(terminalStatePresentation('completed', '', 'plan'), ['completed', 'Plan complete']);
+assert.deepEqual(terminalStatePresentation('stopped', '', 'task'), ['idle', 'Stopped']);
 
 console.log('agent-workflow-view patch tests PASS');
