@@ -5,7 +5,7 @@ const { BrowserToolRuntime, normalizeWebUrl } = require('../src/browser/browser-
 
 function createFakeCdp() {
   const pages = new Map([
-    ['chat-transport', { id:'chat-transport', type:'page', url:'https://chatgpt.com/c/transport', title:'Chat transport', readyState:'complete', text:'transport', typed:'' }],
+    ['chat-transport', { id:'chat-transport', type:'page', url:'https://chatgpt.com/c/transport', title:'Chat transport', readyState:'complete', text:'transport', typed:'', settlementStartedAt:0, settlementLastMutationAt:0, settlementRevision:0 }],
   ]);
   let sequence = 0;
   const events = [];
@@ -17,7 +17,7 @@ function createFakeCdp() {
         Target:{
           createTarget:async ({url})=>{
             const id=`browser-${++sequence}`;
-            pages.set(id,{id,type:'page',url,title:`Page ${sequence}`,readyState:'complete',text:`Body for ${url}`,typed:''});
+            pages.set(id,{id,type:'page',url,title:`Page ${sequence}`,readyState:'complete',text:`Body for ${url}`,typed:'',settlementStartedAt:0,settlementLastMutationAt:0,settlementRevision:0});
             events.push({type:'create',id,url});
             return{targetId:id};
           },
@@ -42,14 +42,43 @@ function createFakeCdp() {
               interactive:[
                 {ref:'aa-1',tag:'a',role:null,name:'Next',href:'https://example.com/next',inputType:null,disabled:false,contentEditable:false,rect:{x:0,y:0,width:50,height:20}},
                 {ref:'aa-2',tag:'input',role:null,name:'Search',href:null,inputType:'text',disabled:false,contentEditable:false,rect:{x:0,y:30,width:100,height:20}},
+                {ref:'aa-3',tag:'button',role:null,name:'Async update',href:null,inputType:null,disabled:false,contentEditable:false,rect:{x:0,y:60,width:100,height:20}},
               ],
               interactiveTruncated:false,
+            }}};
+          }
+          if(expression.includes('__accessAgentSettlement')&&expression.includes('new MutationObserver')){
+            const now=Date.now();
+            page.settlementStartedAt=now;
+            page.settlementLastMutationAt=now;
+            page.settlementRevision=0;
+            events.push({type:'settlement-start',targetId});
+            return{result:{value:{startedAt:now,url:page.url,title:page.title,readyState:page.readyState}}};
+          }
+          if(expression.includes('settlementRevision')&&expression.includes('__accessAgentSettlement')){
+            return{result:{value:{
+              url:page.url,title:page.title,readyState:page.readyState,
+              settlementStartedAt:page.settlementStartedAt,
+              settlementLastMutationAt:page.settlementLastMutationAt,
+              settlementRevision:page.settlementRevision,
             }}};
           }
           if(expression.includes('const ref="aa-1"')&&expression.includes('navigate-anchor')){
             const before=page.url;
             events.push({type:'click',targetId,ref:'aa-1'});
             return{result:{value:{ok:true,method:'navigate-anchor',before,element:{tag:'a',role:null,name:'Next',href:'https://example.com/next'},navigateUrl:'https://example.com/next'}}};
+          }
+          if(expression.includes('const ref="aa-3"')&&expression.includes('navigate-anchor')){
+            const before=page.url;
+            events.push({type:'click',targetId,ref:'aa-3'});
+            setTimeout(()=>{
+              page.title='Async settled';
+              page.text='Async content settled';
+              page.settlementRevision+=1;
+              page.settlementLastMutationAt=Date.now();
+              events.push({type:'async-mutation',targetId,ref:'aa-3'});
+            },150);
+            return{result:{value:{ok:true,method:'dom-click',before,element:{tag:'button',role:null,name:'Async update',href:null}}}};
           }
           if(expression.includes('const ref="aa-2"')&&expression.includes('BROWSER_ELEMENT_NOT_EDITABLE')){
             events.push({type:'type-prepare',targetId,ref:'aa-2'});
@@ -99,7 +128,9 @@ async function run() {
     getEndpoint:async()=>endpoint,
     isProtectedUrl:url=>String(url).replace(/\/$/u,'')===protectedUrl,
     readinessTimeoutMs:500,
-    pollIntervalMs:5,
+    pollIntervalMs:10,
+    settlementQuietMs:80,
+    settlementTimeoutMs:600,
   });
 
   await assert.rejects(()=>runtime.navigate({targetId:'chat-transport',url:'https://example.com/'}),error=>error?.code==='BROWSER_TARGET_NOT_OWNED');
@@ -123,12 +154,23 @@ async function run() {
   assert.match(snapshot.text,/Body for/u);
   assert.equal(snapshot.interactive[0].ref,'aa-1');
   assert.equal(snapshot.interactive[1].ref,'aa-2');
+  assert.equal(snapshot.interactive[2].ref,'aa-3');
 
   const clicked=await runtime.click({targetId:opened.targetId,ref:'aa-1'});
   assert.equal(clicked.ok,true);
   assert.equal(clicked.verifiedActionDispatch,true);
-  assert.equal(clicked.downstreamOutcome,'UNVERIFIED');
+  assert.equal(clicked.downstreamOutcome,'SETTLED');
+  assert.equal(clicked.settlement?.status,'settled');
   assert.equal(clicked.url,'https://example.com/next');
+
+  const asyncClicked=await runtime.click({targetId:opened.targetId,ref:'aa-3'});
+  assert.equal(asyncClicked.ok,true);
+  assert.equal(asyncClicked.method,'dom-click');
+  assert.equal(asyncClicked.downstreamOutcome,'SETTLED');
+  assert.equal(asyncClicked.settlement?.status,'settled');
+  assert.ok(asyncClicked.settlement?.revision>=1,'delayed post-click mutation must be observed before click returns');
+  assert.equal(asyncClicked.title,'Async settled');
+  assert.equal(harness.events.some(event=>event.type==='async-mutation'),true);
 
   const typed=await runtime.type({targetId:opened.targetId,ref:'aa-2',text:'hello'});
   assert.equal(typed.ok,true);
@@ -142,6 +184,7 @@ async function run() {
   const navigated=await runtime.navigate({targetId:opened.targetId,url:'https://example.org/page'});
   assert.equal(navigated.ok,true);
   assert.equal(navigated.url,'https://example.org/page');
+  assert.equal(navigated.settlement?.status,'settled');
 
   const redirected=await runtime.open({url:'https://example.org/redirect-source'});
   harness.pages.get(redirected.targetId).url=protectedUrl;
