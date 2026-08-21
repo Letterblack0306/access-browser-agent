@@ -26,6 +26,15 @@ function subscribe(channel, listener) {
   return () => ipcRenderer.removeListener(channel, handler);
 }
 
+function normalizeAgentEventForUi(payload) {
+  if (!payload || typeof payload !== 'object' || !payload.type) return payload;
+  return {
+    ...payload,
+    lifecyclePhase: payload.phase,
+    phase: payload.type,
+  };
+}
+
 function diagnostic(payload) {
   try { ipcRenderer.send('ide:diagnostic-event', payload); } catch {}
 }
@@ -104,7 +113,7 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   agentStatus: () => invoke('ide:agent-status'),
   agentReceipts: () => invoke('ide:agent-receipts'),
   agentExecutionTrace: sessionId => invoke('ide:agent-execution-trace', sessionId),
-  onAgentEvent: listener => subscribe('ide:agent-event', listener),
+  onAgentEvent: listener => subscribe('ide:agent-event', payload => listener(normalizeAgentEventForUi(payload))),
   onAgentState: listener => subscribe('ide:agent-state', listener),
   diagnosticEvent: input => diagnostic(input),
   diagnosticSession: () => invoke('ide:diagnostic-session'),
