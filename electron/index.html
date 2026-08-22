@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="./rebuild-shell.css">
   <link rel="stylesheet" href="./rebuild-settings.css">
+  <link rel="stylesheet" href="./rebuild-ide-reference.css">
 </head>
 <body>
   <div class="app">
@@ -33,8 +34,19 @@
 
     <main class="workbench" aria-label="Access Agent workbench">
       <aside class="region left-region" aria-label="Workspace context">
+        <nav class="ide-activity-rail" data-ide-activity-rail aria-label="Workbench activity">
+          <button class="ide-activity-button is-active" data-ide-target="files" type="button" aria-label="Files" aria-pressed="true">▤</button>
+          <button class="ide-activity-button" data-ide-target="agent" type="button" aria-label="Agent task" aria-pressed="false">✦</button>
+          <button class="ide-activity-button" data-ide-target="execution" type="button" aria-label="Execution" aria-pressed="false">›_</button>
+          <button class="ide-activity-button" data-ide-target="editor" type="button" aria-label="Editor" aria-pressed="false">‹›</button>
+          <button class="ide-activity-button" data-ide-target="browser" type="button" aria-label="Browser loop" aria-pressed="false">◉</button>
+          <div class="ide-activity-spacer"></div>
+          <button class="ide-activity-button" data-ide-target="runtime" type="button" aria-label="Runtime" aria-pressed="false">◇</button>
+          <button class="ide-activity-button" data-ide-target="settings" type="button" aria-label="Settings" aria-pressed="false">⚙</button>
+        </nav>
         <section class="panel">
           <header class="panel-header"><span class="panel-title">Workspace</span><div class="panel-actions"><button id="refreshFiles" class="control compact" type="button">Refresh</button></div></header>
+          <div class="ide-workspace-label">Accecc Browser Agent</div>
           <div class="left-tools"><input id="fileSearch" class="search-input" type="search" placeholder="Filter files" aria-label="Filter files"></div>
           <div class="panel-body"><ul id="fileList" class="file-list" aria-label="Workspace files"></ul></div>
         </section>
@@ -102,6 +114,7 @@
   <script src="./rebuild-runtime-state.js"></script>
   <script src="./rebuild-shell.js"></script>
   <script src="./rebuild-renderer.js"></script>
+  <script src="./rebuild-ide-reference.js"></script>
   <script src="./rebuild-reset-actions.js"></script>
   <script src="./rebuild-settings.js"></script>
   <script src="./rebuild-diagnostic-enhancer.js"></script>
