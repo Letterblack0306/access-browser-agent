@@ -59,17 +59,14 @@ class TaskPlan {
   markCompleted(index, detail = '') {
     const step = this.steps[index];
     if (!step) return null;
-    // FIX #3: No transition after terminal. A completed/failed/blocked step
-    // cannot be re-marked running or completed.
     if (step.status === STEP_STATUS.COMPLETED || step.status === STEP_STATUS.FAILED || step.status === STEP_STATUS.BLOCKED) {
       return step;
     }
     step.status = STEP_STATUS.COMPLETED;
     step.completedAt = new Date().toISOString();
     step.detail = String(detail || '');
+    step.planNodeId = step.id;
     this._touch();
-    // FIX #3: Plan phase is monotonic — never regress from failed/blocked back
-    // to completed. Only set completed if no step is failed or blocked.
     if (this.steps.every(item => item.status === STEP_STATUS.COMPLETED)) {
       this.phase = 'completed';
     }

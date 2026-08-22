@@ -226,7 +226,8 @@ class AgentExecutive {
   }
 
   _buildStepContext(stepId) {
-    return { sessionId: this.sessionId, stepId, workspaceRoot: this.workspaceRoot, objective: this.state.objective, status: this.state.status, pendingInstructions: cloneJson(this.state.pendingInstructions), conversation: cloneJson(this.state.conversation || { messages: [] }), recentDecisions: cloneJson(this.state.decisions.slice(-20)), recentObservations: cloneJson(this.state.observations.slice(-20)), checkpointId: this.state.checkpointId, providerSelection: cloneJson(this.state.providerSelection), skills: this.skillSeed || null };
+    const activePlanNodeId = this.state?.activePlanNodeId || this.state?.currentPlanStepId || null;
+    return { sessionId: this.sessionId, stepId, planNodeId: activePlanNodeId, workspaceRoot: this.workspaceRoot, objective: this.state.objective, status: this.state.status, pendingInstructions: cloneJson(this.state.pendingInstructions), conversation: cloneJson(this.state.conversation || { messages: [] }), recentDecisions: cloneJson(this.state.decisions.slice(-20)), recentObservations: cloneJson(this.state.observations.slice(-20)), checkpointId: this.state.checkpointId, providerSelection: cloneJson(this.state.providerSelection), skills: this.skillSeed || null };
   }
 
   async _append(type, data) { const event = await this.store.append(type, data); this.events.push(event); this.state = projectSession([event], this.state); this.onEvent(cloneJson(event)); this._emitState(); return event; }

@@ -104,6 +104,20 @@
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.live-stream-payload {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #d1d1d6;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 .live-tool-foot {
   display: flex;
   justify-content: space-between;

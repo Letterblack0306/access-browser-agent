@@ -268,21 +268,27 @@ await refreshStatus({quiet:true,force:true});
 
   function renderLiveSessionStream() {
     const host = $('conversation'); if (!host) return;
-    const records = diagnosticRecords.filter(liveStreamRecord).slice(-80);
+    const records = diagnosticRecords.filter(liveStreamRecord).slice(-100);
     if (!records.length) {
-      host.innerHTML = '<div id="conversationEmpty" class="empty-state"><strong>Waiting for browser work</strong>Paste the exact supported chat URL in Browser Loop and press Start. Real agent and tool activity will appear here as it occurs.</div>';
+      host.innerHTML = '<div id="conversationEmpty" class="empty-state"><strong>Waiting for session activity</strong>Submit an instruction or start the agent loop. Real agent reasoning, tool execution, terminal outputs, and evidence will stream here dynamically.</div>';
       return;
     }
+    const isAtBottom = host.scrollHeight - host.scrollTop - host.clientHeight <= 40;
     host.innerHTML = `<div class="live-session-stream">${records.map(record => {
       const role = liveStreamRole(record);
       const tone = toneFor(record?.severity || record?.phase || record?.action);
       const actor = role === 'agent' ? 'A' : role === 'tool' ? 'T' : 'R';
-      const who = role === 'agent' ? 'agent' : role === 'tool' ? 'tool call' : 'runtime';
+      const who = role === 'agent' ? 'agent reasoning' : role === 'tool' ? 'tool action' : 'runtime event';
       const correlation = correlationSummary(record);
       const time = String(record?.timestamp || '').slice(11,19);
-      return `<article class="live-stream-message ${role}"><div class="live-stream-avatar ${role}">${actor}</div><div class="live-stream-content"><div class="live-stream-who">${who}${time ? ` · ${escapeHtml(time)}` : ''}</div><div class="live-tool-cell" data-tone="${tone}"><div class="live-tool-head"><span class="live-tool-name">${escapeHtml(liveStreamTitle(record))}</span><span class="live-tool-state">${escapeHtml(fmt(record?.phase || 'event'))}</span></div><div class="live-tool-body">${escapeHtml(liveStreamBody(record))}</div><div class="live-tool-foot"><span>${escapeHtml(record?.source || record?.category || 'runtime')}</span><span>${escapeHtml(correlation || 'evidence in Complete Log')}</span></div></div></div></article>`;
+      const data = record?.data || {};
+      const payloadDetails = data.inputSummary || data.outputSummary || data.result || data.detail || null;
+      const payloadText = payloadDetails ? (typeof payloadDetails === 'string' ? payloadDetails : JSON.stringify(payloadDetails, null, 2)) : '';
+      return `<article class="live-stream-message ${role}"><div class="live-stream-avatar ${role}">${actor}</div><div class="live-stream-content"><div class="live-stream-who">${who}${time ? ` · ${escapeHtml(time)}` : ''}</div><div class="live-tool-cell" data-tone="${tone}"><div class="live-tool-head"><span class="live-tool-name">${escapeHtml(liveStreamTitle(record))}</span><span class="live-tool-state">${escapeHtml(fmt(record?.phase || 'event'))}</span></div><div class="live-tool-body">${escapeHtml(liveStreamBody(record))}${payloadText ? `<pre class="live-stream-payload">${escapeHtml(payloadText)}</pre>` : ''}</div><div class="live-tool-foot"><span>${escapeHtml(record?.source || record?.category || 'runtime')}</span><span>${escapeHtml(correlation || 'ground truth evidence')}</span></div></div></div></article>`;
     }).join('')}</div>`;
-    host.scrollTop = host.scrollHeight;
+    if (isAtBottom) {
+      host.scrollTop = host.scrollHeight;
+    }
   }
 
   function renderRuntimeTruth() {

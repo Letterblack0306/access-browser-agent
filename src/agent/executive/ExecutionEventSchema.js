@@ -39,6 +39,9 @@ function createExecutionEvent(input = {}) {
     diagnosticId: input.diagnosticId ? String(input.diagnosticId) : null,
     receiptId: input.receiptId ? String(input.receiptId) : null,
     approvalId: input.approvalId ? String(input.approvalId) : null,
+    planNodeId: input.planNodeId ? String(input.planNodeId) : null,
+    gitCommitSha: input.gitCommitSha ? String(input.gitCommitSha) : null,
+    browserResultSha: input.browserResultSha ? String(input.browserResultSha) : null,
     error: input.error ? clone(input.error) : null,
   };
   return validateExecutionEvent(event);

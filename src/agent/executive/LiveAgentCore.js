@@ -201,101 +201,128 @@ class LiveAgentCore {
           };
         }
 
-        for (const call of response.toolCalls) {
+        const isReadOnlyTool = name => {
+          if (typeof this.registry?.get === 'function') return this.registry.get(name)?.readOnly === true;
+          if (typeof this.registry?.capabilityManifest === 'function') {
+            const tool = this.registry.capabilityManifest().find(item => item.name === name);
+            return tool?.readOnly === true;
+          }
+          return false;
+        };
+        const batches = partitionToolCalls(response.toolCalls, isReadOnlyTool);
+
+        for (const batch of batches) {
           if (toolCalls >= this.maxToolCalls) break;
-          toolCalls += 1;
-          const phase = executionPhaseForTool(call.name);
-          const execution = baseExecutionEvent(stepContext, call, phase);
-          await emitExecutionEvent({ ...execution, type:'execution.phase.changed', status:'running', phase });
-          await emitExecutionEvent({ ...execution, type:'execution.tool.started', status:'running', phase });
 
-          let result;
-          try {
-            result = await this.registry.execute(call.name, call.arguments, {
-              ...this.ctx,
-              sessionId,
-              turnId:stepContext.turnId || stepContext.stepId,
-              stepId:stepContext.stepId,
-              toolCallId:call.id,
-              operationId:stepContext.operationId,
-              instructionId:stepContext.instructionId,
-            });
-          } catch (error) {
-            result = {
-              ok:false,
-              output:{
+          const executeSingleCall = async (call) => {
+            const phase = executionPhaseForTool(call.name);
+            const execution = baseExecutionEvent(stepContext, call, phase);
+            await emitExecutionEvent({ ...execution, type:'execution.phase.changed', status:'running', phase });
+            await emitExecutionEvent({ ...execution, type:'execution.tool.started', status:'running', phase });
+
+            let result;
+            try {
+              result = await this.registry.execute(call.name, call.arguments, {
+                ...this.ctx,
+                sessionId,
+                turnId:stepContext.turnId || stepContext.stepId,
+                stepId:stepContext.stepId,
+                toolCallId:call.id,
+                operationId:stepContext.operationId,
+                instructionId:stepContext.instructionId,
+              });
+            } catch (error) {
+              result = {
                 ok:false,
-                observation:'FAILED',
-                error:{ code:String(error?.code || 'TOOL_EXECUTION_FAILED'), message:String(error?.message || error) },
-              },
-              evidence:{ verified:false },
-            };
+                output:{
+                  ok:false,
+                  observation:'FAILED',
+                  error:{ code:String(error?.code || 'TOOL_EXECUTION_FAILED'), message:String(error?.message || error) },
+                },
+                evidence:{ verified:false },
+              };
+            }
+            return { call, phase, execution, result };
+          };
+
+          let batchResults = [];
+          if (batch.isReadOnly && batch.calls.length > 1) {
+            const availableBudget = this.maxToolCalls - toolCalls;
+            const runnableCalls = batch.calls.slice(0, availableBudget);
+            toolCalls += runnableCalls.length;
+            batchResults = await Promise.all(runnableCalls.map(call => executeSingleCall(call)));
+          } else {
+            for (const call of batch.calls) {
+              if (toolCalls >= this.maxToolCalls) break;
+              toolCalls += 1;
+              const res = await executeSingleCall(call);
+              batchResults.push(res);
+            }
           }
 
-          const output = result?.output || { ok:false, observation:'EMPTY' };
-          const toolMessage = {
-            role:'tool',
-            tool_call_id:call.id,
-            content:durableToolContent(output),
-          };
-          messages.push(toolMessage);
-          await emitAgentEvent('conversation.message', { message:toolMessage });
-
-          const completed = {
-            ...execution,
-            type:'execution.tool.completed',
-            status:'completed',
-            phase:result?.ok === true ? phase : 'recovering',
-            outputSummary:summarizeToolOutput(output),
-            receiptId:output.receipt?.id || output.receiptId || output.receipt?.hash || null,
-            error:result?.ok === true ? null : summarizeError(output.error || output),
-          };
-          const stored = await emitExecutionEvent(completed);
-          runtimeEvidence.push(runtimeEvidenceRecord(stored?.data || completed, output, result?.evidence));
-
-          const terminal = result?.output?.terminal === true || result?.output?.error?.terminal === true;
-          if (terminal) {
-            const terminalCode = String(output?.code || output?.error?.code || 'TERMINAL');
-            const terminalDetail = String(output?.error?.message || output?.message || '').trim();
-            return {
-              status:'blocked',
-              blocker:'terminal_tool',
-              reason:`Terminal tool "${call.name}" returned ${terminalCode}${terminalDetail ? `: ${terminalDetail}` : ''}. The objective stopped immediately instead of exhausting the tool budget.`,
-              summary:'BLOCKED: a terminal tool outcome forced the objective to stop now.',
-              evidence:runtimeEvidence,
-              consumeInstructions:false,
+          for (const item of batchResults) {
+            const { call, phase, execution, result } = item;
+            const output = result?.output || { ok:false, observation:'EMPTY' };
+            const toolMessage = {
+              role:'tool',
+              tool_call_id:call.id,
+              content:durableToolContent(output),
             };
-          }
+            messages.push(toolMessage);
+            await emitAgentEvent('conversation.message', { message:toolMessage });
 
-          const fingerprint = observationFingerprint(call.name, call.arguments, output);
-          if (fingerprint === lastObservationFingerprint) {
-            duplicateObservationCount += 1;
-            const reconciliation = {
-              toolName:String(call.name || ''),
-              duplicateCount:duplicateObservationCount,
-              observationHash:fingerprint,
-              status:duplicateObservationCount >= 2 ? 'stagnation' : 'no_state_change',
+            const completed = {
+              ...execution,
+              type:'execution.tool.completed',
+              status:'completed',
+              phase:result?.ok === true ? phase : 'recovering',
+              outputSummary:summarizeToolOutput(output),
+              receiptId:output.receipt?.id || output.receiptId || output.receipt?.hash || null,
+              error:result?.ok === true ? null : summarizeError(output.error || output),
             };
-            await emitAgentEvent('runtime.no_progress', reconciliation);
-            if (duplicateObservationCount >= 2) {
+            const stored = await emitExecutionEvent(completed);
+            runtimeEvidence.push(runtimeEvidenceRecord(stored?.data || completed, output, result?.evidence));
+
+            const terminal = result?.output?.terminal === true || result?.output?.error?.terminal === true;
+            if (terminal) {
+              const terminalCode = String(output?.code || output?.error?.code || 'TERMINAL');
+              const terminalDetail = String(output?.error?.message || output?.message || '').trim();
               return {
                 status:'blocked',
-                blocker:'no_progress_stagnation',
-                reason:`The same tool observation repeated ${duplicateObservationCount} consecutive times without material state change. Runtime reconciliation stopped the loop before another provider completion.`,
-                summary:'BLOCKED: repeated identical observations produced no material progress.',
+                blocker:'terminal_tool',
+                reason:`Terminal tool "${call.name}" returned ${terminalCode}${terminalDetail ? `: ${terminalDetail}` : ''}. The objective stopped immediately instead of exhausting the tool budget.`,
+                summary:'BLOCKED: a terminal tool outcome forced the objective to stop now.',
                 evidence:runtimeEvidence,
                 consumeInstructions:false,
               };
             }
-            transientRuntimeNotice = NO_PROGRESS_NOTICE;
-          } else {
-            lastObservationFingerprint = fingerprint;
-            duplicateObservationCount = 0;
-          }
 
-          // Important: failed/non-found/unavailable tool observations are now
-          // in conversation as real flow messages. Control returns to the model
-          // on the next loop iteration so it can adapt rather than terminate.
+            const fingerprint = observationFingerprint(call.name, call.arguments, output);
+            if (fingerprint === lastObservationFingerprint) {
+              duplicateObservationCount += 1;
+              const reconciliation = {
+                toolName:String(call.name || ''),
+                duplicateCount:duplicateObservationCount,
+                observationHash:fingerprint,
+                status:duplicateObservationCount >= 2 ? 'stagnation' : 'no_state_change',
+              };
+              await emitAgentEvent('runtime.no_progress', reconciliation);
+              if (duplicateObservationCount >= 2) {
+                return {
+                  status:'blocked',
+                  blocker:'no_progress_stagnation',
+                  reason:`The same tool observation repeated ${duplicateObservationCount} consecutive times without material state change. Runtime reconciliation stopped the loop before another provider completion.`,
+                  summary:'BLOCKED: repeated identical observations produced no material progress.',
+                  evidence:runtimeEvidence,
+                  consumeInstructions:false,
+                };
+              }
+              transientRuntimeNotice = NO_PROGRESS_NOTICE;
+            } else {
+              lastObservationFingerprint = fingerprint;
+              duplicateObservationCount = 0;
+            }
+          }
         }
       }
 
@@ -461,6 +488,24 @@ function requiredToolEvidence() { return []; }
 function evidenceCategoryForTool() { return null; }
 function missingEvidence() { return []; }
 
+function partitionToolCalls(toolCalls = [], isReadOnlyFn = () => false) {
+  if (!Array.isArray(toolCalls) || !toolCalls.length) return [];
+  const batches = [];
+  let currentBatch = null;
+
+  for (const call of toolCalls) {
+    const isReadOnly = isReadOnlyFn(call.name);
+    if (!currentBatch || currentBatch.isReadOnly !== isReadOnly) {
+      currentBatch = { isReadOnly, calls: [call] };
+      batches.push(currentBatch);
+    } else {
+      currentBatch.calls.push(call);
+    }
+  }
+
+  return batches;
+}
+
 module.exports = {
   LiveAgentCore,
   SYSTEM_PROMPT,
@@ -473,4 +518,5 @@ module.exports = {
   capabilityPrompt,
   runtimeEvidenceRecord,
   observationFingerprint,
+  partitionToolCalls,
 };

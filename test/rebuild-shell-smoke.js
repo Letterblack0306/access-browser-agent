@@ -103,7 +103,7 @@ assert.doesNotMatch(renderer,/function refreshTargets\(|function selectTarget\(|
 assert.match(renderer,/function liveStreamRecord\(/u);
 assert.match(renderer,/function renderLiveSessionStream\(/u);
 assert.match(renderer,/class="live-tool-cell"/u);
-assert.match(renderer,/evidence in Complete Log/u);
+assert.match(renderer,/ground truth evidence/u);
 assert.match(renderer,/renderLiveSessionStream\(\)/u);
 assert.doesNotMatch(renderer,/approval|approve|deny|awaiting authorization/iu,'live runtime stream must not implement approval semantics');
 assert.match(renderer,/api\.terminalCreate/u);
