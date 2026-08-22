@@ -6,8 +6,6 @@ const ALLOWED_UI_IDS = Object.freeze(new Set([
   'chooseWorkspace',
   'agentControl',
   'toggleMcp',
-  'sendBirdEye',
-  'birdEyeStatus',
   'status',
   'workbench',
   'footerRuntime',

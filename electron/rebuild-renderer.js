@@ -524,7 +524,6 @@ await refreshStatus({quiet:true,force:true});
     $('diagnosticFilter').addEventListener('change',renderDiagnostics);
     $('openDiagnosticFolder').addEventListener('click',()=>api.diagnosticReveal().catch(error=>recordUiProblem('diagnostics',error)));
     $('toggleMcp').addEventListener('click',async()=>{try{const current=await api.mcpStatus();const result=await api.setMcpEnabled(current?.enabled!==true);text('mcpDetail',`${result.status||'unknown'}${result.error?` — ${result.error}`:''}`);}catch(error){recordUiProblem('mcp',error);}});
-    $('sendBirdEye').addEventListener('click',async()=>{try{const result=await api.sendBirdEye();text('birdEyeDetail',result?.status||result?.url||'Handoff created');}catch(error){recordUiProblem('birdeye',error);}});
     api.onAgentEvent(event=>{state=Projection.withEvent(state,event||{});render();if(['browser_relay.delivery_failed','browser_relay.instruction_recovery_required'].includes(event?.phase))shell.showBottom('problems');});
     api.onAgentState(event=>{state=Projection.withEvent(state,{phase:'agent.state',...event});refreshStatus({quiet:true,force:true});});
     api.onDiagnosticRecord?.(record=>{ diagnosticRecords.push(record); if(diagnosticRecords.length>5000) diagnosticRecords=diagnosticRecords.slice(-5000); renderDiagnostics(); renderRuntimeTruth(); renderLiveSessionStream(); });

@@ -14,7 +14,7 @@ for (const id of [
   'clineLogin', 'clineLogout', 'clineModel', 'clineRefreshModels', 'clineTest', 'clineUse',
   'lmBaseUrl', 'lmModel', 'lmDiscover', 'lmUse',
   'browserProfilePath', 'browserExecutable', 'chooseChromeProfile', 'saveBrowserDefaults', 'chatUrl',
-  'toggleMcp', 'sendBirdEye',
+  'toggleMcp',
 ]) {
   assert.match(html, new RegExp(`id="${id}"`, 'u'), `fresh settings surface missing ${id}`);
 }

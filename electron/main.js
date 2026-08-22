@@ -9,7 +9,6 @@ const { IdePreferences } = require('../src/system/ide-preferences');
 const { LocalRuntimeDiagnostics } = require('../src/system/local-runtime-diagnostics');
 const { SkillCatalog } = require('../src/system/skill-catalog');
 const { WorkspaceGitStatus } = require('../src/system/workspace-git-status');
-const { WorkspaceHandoffService } = require('../src/system/workspace-handoff-service');
 const { validateWorkspacePath } = require('../src/system/workspace-path-guard');
 const { parseWorkbenchLayout } = require('../src/system/workbench-layout');
 const { AgentRuntimeAdapter } = require('./agent-runtime-adapter');
@@ -38,7 +37,6 @@ let bridgeServer;
 let preferences;
 let preferenceValues;
 let workspaceGit;
-let handoffService;
 let agentRuntime;
 let mcpEnabled = false;
 let mcpClient;
@@ -456,8 +454,6 @@ ipcMain.handle('ide:mcp-set-enabled', async (_event, enabled) => {
   preferenceValues = await preferences.save({ ...preferenceValues, workspaceRoot, mcpEnabled });
   return { ok: true, ...mcpStatus() };
 });
-ipcMain.handle('ide:birdeye-send', () => handoffService.create(workspaceRoot));
-ipcMain.handle('ide:birdeye-status', () => handoffService.status());
 ipcMain.handle('ide:list', (_event, relativePath = '.') => bridgeRequest(`/api/workspace/list?path=${encodeURIComponent(relativePath)}`));
 ipcMain.handle('ide:read', (_event, relativePath) => bridgeRequest(`/api/workspace/file?path=${encodeURIComponent(relativePath)}`));
 ipcMain.handle('ide:write', (_event, input = {}) => bridgeRequest('/api/workspace/file', {
@@ -517,10 +513,6 @@ ipcMain.handle('ide:agent-reject', (_event, approvalId) => agentRuntime.reject(a
 app.whenReady().then(async () => {
   try {
     preferences = new IdePreferences(app.getPath('userData'));
-    handoffService = new WorkspaceHandoffService({
-      stateRoot: app.getPath('userData'),
-      targetRepository: 'Letterblack0306/Letterblack_BirdEye',
-    });
     preferenceValues = await preferences.load();
     workspaceSync = new WorkspaceCloneSync();
     managedChrome = new ManagedChrome({ getSettings: () => preferenceValues });

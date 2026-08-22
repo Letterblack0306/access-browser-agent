@@ -91,8 +91,6 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   inspectWorkspace: relativePath => invoke('ide:inspect-workspace', relativePath),
   mcpStatus: () => invoke('ide:mcp-status'),
   setMcpEnabled: enabled => invoke('ide:mcp-set-enabled', enabled),
-  sendBirdEye: () => invoke('ide:birdeye-send'),
-  birdEyeStatus: () => invoke('ide:birdeye-status'),
   models: baseUrl => invoke('ide:models', baseUrl),
   gitStatus: () => invoke('ide:git-status'),
   gitDiff: relativePath => invoke('ide:git-diff', relativePath),

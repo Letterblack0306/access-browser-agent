@@ -36,7 +36,7 @@ for (const historical of [
 for (const requiredId of [
   'workspacePath','conversation','chatUrl','loopStart','recoverLoop','checkTarget','deliveryState','terminalHost',
   'diagnosticList','diagnosticFilter','openDiagnosticFolder','eventList','problemList','validationOutput',
-  'clineLogin','clineModel','lmBaseUrl','browserProfilePath','toggleMcp','sendBirdEye','runtimeRestart','stopAll','resetLayout','resetActions',
+  'clineLogin','clineModel','lmBaseUrl','browserProfilePath','toggleMcp','runtimeRestart','stopAll','resetLayout','resetActions',
 ]) assert.match(html, new RegExp(`id="${requiredId}"`, 'u'), `missing fresh workbench control ${requiredId}`);
 assert.doesNotMatch(html,/id="runtimeToggle"|id="runtimeStart"|id="runtimeStop"|id="loopStop"/u,'duplicate lifecycle controls must not be visible');
 assert.match(html,/id="resetActions"[\s\S]*?<option value="browser-session">Reset browser session<\/option>[\s\S]*?<option value="runtime">Reset runtime<\/option>[\s\S]*?<option value="layout">Reset layout<\/option>[\s\S]*?<option value="stop-all">Stop All Access resources<\/option>/u,'top-bar Reset dropdown must centralize recovery choices');

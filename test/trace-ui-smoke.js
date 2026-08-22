@@ -12,7 +12,7 @@ const preload = fs.readFileSync(path.join(root, 'electron', 'preload.js'), 'utf8
 const main = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8');
 const layout = parseWorkbenchLayout(fs.readFileSync(path.join(root, 'electron', 'workbench.layout.json'), 'utf8'));
 
-const trace = layout.modules.find(module => module.id === 'logs');
+const trace = layout.modules.find(module => module.id === 'execution');
 assert.ok(trace && trace.content === 'trace' && trace.placement === 'right' && trace.visible === true);
 for (const marker of [
   'trace: () =>', 'traceStatusFilter', 'traceToolFilter', 'traceModuleFilter', 'traceTurnFilter',
@@ -20,6 +20,6 @@ for (const marker of [
   'execution.tool.approval_requested', 'execution.tool.failed', 'blockerIds', 'receiptId', 'textContent'
 ]) assert.ok(renderer.includes(marker), `renderer trace marker missing: ${marker}`);
 for (const marker of ['.module-trace', '.trace-filters', '.trace-list']) assert.ok(styles.includes(marker), `trace style missing: ${marker}`);
-assert.match(preload, /agentExecutionTrace:\s*sessionId\s*=>\s*ipcRenderer\.invoke\('ide:agent-execution-trace'/);
+assert.match(preload, /agentExecutionTrace:\s*sessionId\s*=>\s*invoke\('ide:agent-execution-trace'/);
 assert.match(main, /ipcMain\.handle\('ide:agent-execution-trace'/);
 console.log('trace-ui-smoke: PASS');
