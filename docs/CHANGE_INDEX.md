@@ -38,6 +38,7 @@
 | `2026-08-22-local-ui-external-surface-removal` | `completed` | Remove external BirdEye/workspace-handoff UI surfaces and stale UI test contracts while preserving the local IDE, agent, provider, managed-browser, runtime, editor, terminal, and MCP surfaces. | `docs/change-intents/2026-08-22-local-ui-external-surface-removal.md` |
 | `2026-08-22-monitor-aware-layout-reconciliation` | `completed` | Reconcile persisted IDE pane dimensions when the window moves across displays or its viewport/device scale changes. | `docs/change-intents/2026-08-22-monitor-aware-layout-reconciliation.md` |
 | `2026-08-22-cline-provider-store-import` | `in_progress` | Reuse an existing Cline login from the standard local provider store without exposing or mutating that store. | `docs/change-intents/2026-08-22-cline-provider-store-import.md` |
+| `2026-08-22-cline-live-readiness` | `completed` | Record authenticated live Cline completion, tool-calling, and structured-output readiness. | `docs/change-intents/2026-08-22-cline-live-readiness.md` |
 
 ## Status values
 

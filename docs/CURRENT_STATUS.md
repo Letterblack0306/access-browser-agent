@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: `4dddc0e50ad55609a8bc50e6a890136992c9b4ea`
+Source head: `47f673cc611dccc82e5fbdb04cc99db1e6ec2611`
 
 ## Product state
 
@@ -29,6 +29,6 @@ Monitor-aware layout reconciliation is implemented: persisted pane dimensions ar
 
 Cline auth integration now supports a read-only fallback import from `providers.cline.settings.auth` in the standard user provider store (`%USERPROFILE%\\.cline\\data\\settings\\providers.json`). `CLINE_PROVIDERS_PATH` overrides the default. Access Agent never writes or clears that external file; live Cline sign-in, refresh, and logout remain owned by Access Agent preferences.
 
-The Cline provider-store import smoke and full source checks pass. Live authenticated Cline model use still requires an authenticated provider and a successful live model readiness check.
+The Cline provider-store import smoke and full source checks pass. Live Cline readiness is now proven on the configured authenticated provider: completion, tool-calling, and structured JSON output all passed the product probe.
 
 Untracked `section_09.md` is preserved and is not part of this change.
