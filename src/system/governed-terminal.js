@@ -189,11 +189,13 @@ function quoteCmd(value) { return `"${String(value)}"`; }
 function runSpawn(command, args, cwd) {
   return new Promise(resolve => {
     const child = spawn(command, args, { cwd, shell:false, windowsHide:true, stdio:['ignore','pipe','pipe'] });
+    if (child.stdout) child.stdout.setEncoding('utf8');
+    if (child.stderr) child.stderr.setEncoding('utf8');
     let stdout = '';
     let stderr = '';
     let timedOut = false;
     let settled = false;
-    const append = (current, chunk) => `${current}${chunk}`.slice(-MAX_OUTPUT_BYTES);
+    const append = (current, chunk) => sanitizeTerminalText(`${current}${chunk}`).slice(-MAX_OUTPUT_BYTES);
     child.stdout.on('data', chunk => { stdout = append(stdout, chunk); });
     child.stderr.on('data', chunk => { stderr = append(stderr, chunk); });
     const finish = value => { if (settled) return; settled = true; resolve(value); };
@@ -207,6 +209,13 @@ function runSpawn(command, args, cwd) {
       finish({ ok:!timedOut && exitCode === 0, exitCode, stdout, stderr, output:`${stdout}${stderr}`.slice(-MAX_OUTPUT_BYTES), error:timedOut ? `Command exceeded ${MAX_TIMEOUT_MS / 1000} seconds.` : '', timedOut });
     });
   });
+}
+
+function sanitizeTerminalText(text) {
+  return String(text || '')
+    .replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '') // ANSI escape sequences
+    .replace(/[Γâæâåàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]/g, '') // Windows codepage 437/1252 mojibake artifacts (e.g. right arrow →)
+    .replace(/[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''); // Replacement chars and unprintable control codes
 }
 
 module.exports = {
