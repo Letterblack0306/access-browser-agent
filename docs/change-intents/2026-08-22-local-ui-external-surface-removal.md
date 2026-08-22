@@ -33,3 +33,5 @@ Keep the Access Browser Agent UI focused on the local IDE, local agent, and brow
 ## Status
 
 Implementation complete. Live visual interaction remains unproven because the Windows Computer Use native pipe was unavailable; local Electron launch itself was observed with window title `Access Agent — Rebuild` and a responding process.
+
+Implementation commit: `82093575de2fbc888de08b05de66672c604f6f65`
