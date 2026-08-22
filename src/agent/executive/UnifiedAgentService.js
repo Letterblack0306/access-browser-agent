@@ -31,6 +31,7 @@ class UnifiedAgentService {
       baseUrl:providerOptions.lmStudioBaseUrl,
       model:providerOptions.lmStudioModel,
       apiKey:providerOptions.apiKey,
+      imageInput:providerOptions.lmStudioImageInput === true,
     });
     this.skills = skills || null;
     this.pinnedSkills = Array.isArray(pinnedSkills) ? pinnedSkills.map(name => String(name)) : [];

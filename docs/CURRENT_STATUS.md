@@ -38,3 +38,12 @@ Opt-in browser screenshots remain enabled with `ACCESS_AGENT_CAPTURE_BROWSER_SCR
 The native Windows PTY manager now has a live `pwsh.exe` create/write/exit round-trip proof. Durable agent recovery now fails closed when a restart leaves an execution step without a terminal event: new work is blocked until an explicit operator reconciliation. This removes silent replay risk, but exactly-once external side effects remain dependent on the external tool's idempotency/transaction contract and are not claimed here.
 
 Untracked `section_09.md` is preserved and is not part of this change.
+## Visual input and image verification
+
+The local browser agent now exposes explicit `browserScreenshot` and `browserCompareScreenshots` tools. Screenshot artifacts remain app-owned, are addressed by evidence ID, and are SHA-256 verified before controlled resolution. Provider/model readiness includes an explicit `imageInput` capability and text-only adapters fail closed with `VISUAL_INPUT_UNAVAILABLE` for image-bearing messages.
+
+Current visual capability status: READY for governed screenshot capture and comparison. Provider-native IMAGE_READ is OPEN as the next acceptance gate, not a blocker for this implementation phase. The provider request must contain actual image content before the system may claim IMAGE_READ or visual reasoning.
+
+Next visual acceptance gate: `IMAGE_READ_PROVIDER_NATIVE`.
+
+Falsifier: a provider request contains no actual image content while the system claims IMAGE_READ capability.

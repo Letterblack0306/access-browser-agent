@@ -21,6 +21,7 @@ const { BrowserResultStore } = require('../src/system/browser-result-store');
 const { BrowserSessionAuthority } = require('./browser-session-authority');
 const { TaskStateRouterBridge } = require('./task-state-router-bridge');
 const { WorkspaceCloneSync } = require('../src/system/workspace-clone-sync');
+const { BrowserEvidenceStore, defaultBrowserEvidenceRoot } = require('../src/browser/observable-browser-runtime');
 
 const bridgePort = Number(process.env.ACCESS_AGENT_IDE_BRIDGE_PORT || 7726);
 const diagnostics = new LocalRuntimeDiagnostics();
@@ -33,6 +34,7 @@ const skills = new SkillCatalog(
 );
 
 let windowRef;
+const browserEvidenceStore = new BrowserEvidenceStore(defaultBrowserEvidenceRoot(path.join(app.getPath('userData'),'diagnostics')));
 let bridgeServer;
 let preferences;
 let preferenceValues;
@@ -394,6 +396,8 @@ ipcMain.handle('ide:provider-configure', async (_event, input = {}) => {
       lmStudioEndpointPolicy: String(input.lmStudioEndpointPolicy || 'private-network').trim(),
       lmStudioContextLength: input.lmStudioContextLength || null,
       lmStudioTtlSeconds: input.lmStudioTtlSeconds || null,
+      lmStudioImageInput: input.lmStudioImageInput === true,
+      clineImageInput: input.clineImageInput === true,
       mcpServerCommand: String(input.mcpServerCommand || '').trim(),
       workspaceRoot,
       mcpEnabled,
@@ -550,7 +554,7 @@ app.whenReady().then(async () => {
       storeResult: payload => new BrowserResultStore(path.join(app.getPath('userData'), 'agent-state', workspaceKey(workspaceRoot))).put(payload),
       onEvent: event => { if (windowRef && !windowRef.isDestroyed()) windowRef.webContents.send('ide:agent-event', event); },
     });
-    browserAuthority = new BrowserSessionAuthority({ managedChrome, generalManagedChrome, channel:new ProviderChannel(), relay:browserRelay });
+    browserAuthority = new BrowserSessionAuthority({ managedChrome, generalManagedChrome, channel:new ProviderChannel(), relay:browserRelay, evidenceStore:browserEvidenceStore });
     global.__accessAgentRetireBrowserBootstrap=(endpoint,targetId)=>browserAuthority._retireBootstrapTarget(endpoint,targetId);
     workspaceGit = new WorkspaceGitStatus(workspaceRoot);
     await startBridge(workspaceRoot);

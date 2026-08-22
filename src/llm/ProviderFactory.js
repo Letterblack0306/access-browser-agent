@@ -22,6 +22,7 @@ function createProvider(input = {}, { clineAuth = null, previous = null } = {}) 
     return new ClineLlmsProvider({
       providerId: String(input.clineProviderId || 'cline').trim() || 'cline',
       model: String(input.clineModel || '').trim(),
+      imageInput: input.clineImageInput === true,
       apiKeyProvider: async () => {
         if (explicitApiKey) return explicitApiKey;
         if (!clineAuth || typeof clineAuth.getApiKey !== 'function') return '';
@@ -41,6 +42,7 @@ function createProvider(input = {}, { clineAuth = null, previous = null } = {}) 
     endpointPolicy: input.lmStudioEndpointPolicy,
     contextLength: input.lmStudioContextLength,
     ttlSeconds: input.lmStudioTtlSeconds,
+    imageInput: input.lmStudioImageInput === true,
     timeoutMs: previous?.timeoutMs,
     fetch: previous?.fetch,
   });

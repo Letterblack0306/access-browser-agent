@@ -43,6 +43,7 @@
 | `2026-08-22-agent-recovery-boundary` | `completed` | Fail closed after process restart when an execution step has no durable terminal outcome, requiring explicit reconciliation before new work. | `docs/change-intents/2026-08-22-agent-recovery-boundary.md` |
 | `2026-08-22-general-browser-process-isolation` | `completed` | Give general agent browsing an Access-owned browser process/profile separate from the persistent provider relay browser. | `docs/change-intents/2026-08-22-general-browser-process-isolation.md` |
 | `2026-08-22-browser-screenshot-storage` | `completed` | Keep opt-in browser screenshots and define their default app-owned storage location with correlated evidence metadata. | `docs/change-intents/2026-08-22-browser-screenshot-storage.md` |
+| `2026-08-22-local-agent-visual-input-verification` | `in_progress` | Add bounded local-agent image evidence, explicit image-input capability gating, browser screenshot capture, and deterministic image comparison. | `docs/change-intents/2026-08-22-local-agent-visual-input-verification.md` |
 
 ## Status values
 

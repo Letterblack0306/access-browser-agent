@@ -57,6 +57,7 @@ class BrowserToolRuntime {
     interactiveLimit = DEFAULT_INTERACTIVE_LIMIT,
     accessibilityLimit = DEFAULT_ACCESSIBILITY_LIMIT,
     requireIsolatedContext = false,
+    evidenceStore = null,
   } = {}) {
     if (typeof getEndpoint !== 'function') throw new Error('BrowserToolRuntime requires getEndpoint().');
     this.cdpFactory = cdpFactory;
@@ -70,6 +71,7 @@ class BrowserToolRuntime {
     this.interactiveLimit = Math.max(10, Math.min(500, Number(interactiveLimit) || DEFAULT_INTERACTIVE_LIMIT));
     this.accessibilityLimit = Math.max(20, Math.min(500, Number(accessibilityLimit) || DEFAULT_ACCESSIBILITY_LIMIT));
     this.requireIsolatedContext = requireIsolatedContext !== false;
+    this.evidenceStore = evidenceStore;
     this.ownedTargets = new Map();
     this.currentTargetId = null;
     this.browserContextId = null;
@@ -359,6 +361,22 @@ class BrowserToolRuntime {
       this.currentTargetId = targetId;
       return { ok:true, targetId, ...value, accessibility:await this._accessibilitySnapshot(client) };
     });
+  }
+
+  async screenshot(input = {}) {
+    if(!this.evidenceStore)return{ok:false,code:'VISUAL_EVIDENCE_UNAVAILABLE',error:'Browser visual evidence storage is not configured.'};
+    return this._withTarget(input.targetId,async(client,targetId)=>{
+      const capture=await client.Page.captureScreenshot({format:'png',fromSurface:true});
+      const artifact=await this.evidenceStore.put({screenshotBase64:String(capture?.data||''),correlation:{targetId,url:await evaluateValue(client,'location.href')},privacy:{state:'raw-local-opt-in',screenshotPolicy:'raw_local_opt_in',containsConversationContent:true,redactionNotes:['Screenshot captured explicitly by the local browser tool.']}});
+      const ref=artifact.refs.find(item=>item.type==='screenshot');
+      this.currentTargetId=targetId;
+      return{ok:true,targetId,evidenceId:artifact.artifactId,sha256:ref?.sha256||null,mediaType:'image/png',capturedAt:artifact.capturedAt};
+    });
+  }
+
+  async compareScreenshots(input = {}) {
+    if(!this.evidenceStore)return{ok:false,code:'VISUAL_EVIDENCE_UNAVAILABLE',error:'Browser visual evidence storage is not configured.'};
+    try{return{ok:true,...await this.evidenceStore.compareImages(input.beforeEvidenceId,input.afterEvidenceId)};}catch(error){return{ok:false,code:String(error?.code||'VISUAL_COMPARE_FAILED'),error:String(error?.message||error)};}
   }
 
   async click(input = {}) {

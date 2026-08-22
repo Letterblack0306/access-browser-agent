@@ -4,16 +4,17 @@ const { emitDiagnostic } = require('../system/runtime-diagnostic-bus');
 const { normalizeModelCatalogEntry } = require('./ModelCatalog');
 
 class ClineLlmsProvider {
-  constructor({ providerId = 'cline', model = '', apiKeyProvider, loadLlms, timeoutMs = 180000 } = {}) {
+  constructor({ providerId = 'cline', model = '', apiKeyProvider, loadLlms, timeoutMs = 180000, imageInput = false } = {}) {
     this.providerId = String(providerId || 'cline').trim() || 'cline';
     this.model = String(model || '').trim();
     this.apiKeyProvider = typeof apiKeyProvider === 'function' ? apiKeyProvider : async () => '';
     this.loadLlms = loadLlms || (() => import('@cline/llms'));
     this.timeoutMs = Number(timeoutMs) || 180000;
+    this.imageInput = imageInput === true;
     this.health = {
       providerId:this.providerId, configured:false, reachable:false, healthy:false, modelAvailable:false,
       modelCount:0, healthMode:'lazy', lastCheckedAt:null, lastSuccessAt:null, failureReason:null,
-      capabilities:{ completion:'unknown', toolCalling:'unknown', structuredOutput:'unknown' },
+      capabilities:{ completion:'unknown', toolCalling:'unknown', structuredOutput:'unknown', imageInput:this.imageInput?'configured':'unknown' },
     };
   }
 
@@ -55,6 +56,7 @@ class ClineLlmsProvider {
   }
 
   async complete({ messages, tools, signal } = {}) {
+    if(containsImageInput(messages)&&!this.imageInput)throw providerError('VISUAL_INPUT_UNAVAILABLE','The selected Cline model/provider is not explicitly configured for image input.');
     const started=Date.now();
     const apiKey=String(await this.apiKeyProvider() || '').trim();
     if(!apiKey)throw providerError('CLINE_AUTH_REQUIRED','Cline account is not authenticated.');
@@ -119,5 +121,6 @@ function toClineTools(tools=[]){return(Array.isArray(tools)?tools:[]).map(tool=>
 function parseArguments(value,toolName=''){if(value&&typeof value==='object'&&!Array.isArray(value))return value;const source=String(value??'').trim();if(!source)return{};try{const parsed=JSON.parse(source);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('not an object');return parsed;}catch{throw providerError('CLINE_TOOL_ARGUMENTS_INVALID',`Cline returned invalid JSON arguments for tool ${toolName||'(unknown)'}.`);}}
 function isZeroCostModel(info={}){if(info?.metadata?.free===true||info?.free===true)return true;const pricing=info?.pricing||{};const values=Object.values(pricing).filter(value=>typeof value==='number'&&Number.isFinite(value));return values.length>0&&values.every(value=>value===0);}
 function firstString(...values){for(const value of values){const text=String(value??'').trim();if(text)return text;}return null;}
+function containsImageInput(messages=[]){return(Array.isArray(messages)?messages:[]).some(message=>Array.isArray(message?.content)&&message.content.some(part=>part?.type==='image'||part?.type==='image_url'));}
 function providerError(code,message){const error=new Error(message);error.code=code;return error;}
 module.exports={ClineLlmsProvider,isZeroCostModel,parseArguments,toClineConversation,toClineTools};

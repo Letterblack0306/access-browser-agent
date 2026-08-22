@@ -110,6 +110,7 @@ function normalizeModelCatalogEntry({ providerId, providerKind, modelId, info = 
       completion: 'unknown',
       toolCalling: 'unknown',
       structuredOutput: 'unknown',
+      imageInput: 'unknown',
     },
     readiness: {
       status: 'unverified',

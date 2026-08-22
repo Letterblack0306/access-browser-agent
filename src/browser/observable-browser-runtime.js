@@ -20,7 +20,7 @@ function defaultBrowserEvidenceRoot(diagnosticRoot){
 }
 
 class BrowserEvidenceStore {
-  constructor(root) { this.root=path.resolve(root); }
+  constructor(root) { this.root=path.resolve(root); this.records=new Map(); }
 
   async put(input={}) {
     await fs.mkdir(this.root,{recursive:true});
@@ -49,8 +49,35 @@ class BrowserEvidenceStore {
       refs.push({ type:'screenshot', path:file, sha256:createHash('sha256').update(bytes).digest('hex'), privacy:{...privacy,state:'raw-local-opt-in',containsConversationContent:true} });
     }
 
-    return { artifactId:id, refs, capturedAt:new Date().toISOString(), correlation:input.correlation || {}, privacy };
+    const capturedAt=new Date().toISOString();
+    const record={ artifactId:id, refs, capturedAt, correlation:input.correlation || {}, privacy };
+    this.records.set(id,record);
+    return record;
   }
+
+  async resolveImage(evidenceId, expectedSha256='') {
+    const id=String(evidenceId || '').trim();
+    const record=this.records.get(id);
+    const ref=record?.refs?.find(item=>item.type==='screenshot');
+    if(!ref) { const error=new Error('Unknown or non-image visual evidence ID.'); error.code='VISUAL_EVIDENCE_NOT_FOUND'; throw error; }
+    const bytes=await fs.readFile(ref.path);
+    const sha256=createHash('sha256').update(bytes).digest('hex');
+    if(sha256!==ref.sha256 || (expectedSha256 && sha256!==String(expectedSha256))) { const error=new Error('Visual evidence hash verification failed.'); error.code='VISUAL_EVIDENCE_HASH_MISMATCH'; throw error; }
+    return { evidenceId:id, sha256, mediaType:'image/png', bytes, correlation:record.correlation, capturedAt:record.capturedAt };
+  }
+
+  async compareImages(beforeEvidenceId, afterEvidenceId) {
+    const before=await this.resolveImage(beforeEvidenceId);
+    const after=await this.resolveImage(afterEvidenceId);
+    const changed=!before.bytes.equals(after.bytes);
+    const dimensions=pngDimensions(after.bytes) || pngDimensions(before.bytes) || {width:null,height:null};
+    return {beforeEvidenceId:before.evidenceId,afterEvidenceId:after.evidenceId,beforeSha256:before.sha256,afterSha256:after.sha256,changed,comparison:'byte-identity-with-coarse-frame-region',changedRegions:changed&&dimensions.width&&dimensions.height?[{x:0,y:0,width:dimensions.width,height:dimensions.height}]:[],width:dimensions.width,height:dimensions.height};
+  }
+}
+
+function pngDimensions(bytes) {
+  if(!Buffer.isBuffer(bytes)||bytes.length<24||bytes.readUInt32BE(0)!==0x89504e47||bytes.readUInt32BE(4)!==0x0d0a1a0a)return null;
+  return {width:bytes.readUInt32BE(16),height:bytes.readUInt32BE(20)};
 }
 
 class ObservableProviderChannel extends ProviderChannel {

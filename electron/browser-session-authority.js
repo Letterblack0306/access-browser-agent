@@ -5,7 +5,7 @@ const { conversationIdFromUrl } = require('../src/system/runtime-correlation');
 const { BrowserToolRuntime } = require('../src/browser/browser-tool-runtime');
 
 class BrowserSessionAuthority {
-  constructor({ managedChrome, generalManagedChrome = managedChrome, channel, relay } = {}) {
+  constructor({ managedChrome, generalManagedChrome = managedChrome, channel, relay, evidenceStore = null } = {}) {
     if (!managedChrome || !channel || !relay) throw new Error('Browser session authority requires managed Chrome, provider channel, and relay.');
     this.managedChrome=managedChrome;
     this.generalManagedChrome=generalManagedChrome;
@@ -33,6 +33,7 @@ class BrowserSessionAuthority {
         const expectedId=conversationIdFromUrl(expected);
         return Boolean(expectedId&&conversationIdFromUrl(url)===expectedId);
       },
+      evidenceStore,
     });
     global.__accessAgentBrowserToolRuntime=this.browserTools;
     global.__accessAgentConversationRuntime={read:options=>this.readConversation(options)};

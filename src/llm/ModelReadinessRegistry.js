@@ -38,6 +38,7 @@ function normalizeReadiness(value = {}, fallbackModel = '') {
       completion:String(capabilities.completion || 'unknown'),
       toolCalling:String(capabilities.toolCalling || 'unknown'),
       structuredOutput:String(capabilities.structuredOutput || 'unknown'),
+      imageInput:String(capabilities.imageInput || 'unknown'),
     },
     failureReasons:{ ...failureReasons },
   };

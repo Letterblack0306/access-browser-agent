@@ -26,7 +26,7 @@ class AgentRuntimeAdapter {
       skills:options.skills || null,
       pinnedSkills:options.pinnedSkills,
       mcp:options.mcp || null,
-      providerOptions:{ lmStudioBaseUrl:settings.lmStudioBaseUrl, lmStudioModel:settings.lmStudioModel, apiKey:settings.lmStudioApiKey },
+      providerOptions:{ lmStudioBaseUrl:settings.lmStudioBaseUrl, lmStudioModel:settings.lmStudioModel, apiKey:settings.lmStudioApiKey, lmStudioImageInput:settings.lmStudioImageInput === true },
       onEvent:event => {
         emitDiagnostic({ source:'agent-runtime', category:'agent', action:event?.type || event?.phase || 'event', phase:event?.status || 'event', correlation:correlationFrom(event), data:event });
         const window=this.getWindow();
@@ -186,7 +186,7 @@ class AgentRuntimeAdapter {
 async function probeProviderReadiness({ provider, selection = {}, registry }) {
   if (!provider) throw new Error('Provider runtime is unavailable.');
   const checkedAt=new Date().toISOString();
-  const capabilities={ completion:'unknown', toolCalling:'unknown', structuredOutput:'unknown' };
+  const capabilities={ completion:'unknown', toolCalling:'unknown', structuredOutput:'unknown', imageInput:provider?.imageInput===true?'configured':'unknown' };
   const evidence={ checkedAt, model:null, providerRequestIds:[], failureReasons:{} };
   let text='';
 
@@ -248,6 +248,8 @@ function providerPreferences(input = {}) {
     lmStudioEndpointPolicy:String(input.lmStudioEndpointPolicy || 'private-network').trim(),
     lmStudioContextLength:positiveInteger(input.lmStudioContextLength),
     lmStudioTtlSeconds:positiveInteger(input.lmStudioTtlSeconds),
+    lmStudioImageInput:input.lmStudioImageInput === true,
+    clineImageInput:input.clineImageInput === true,
     lmStudioConversationMode:'application',
     mcpServerCommand:String(input.mcpServerCommand || '').trim(),
   };
