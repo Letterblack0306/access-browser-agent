@@ -66,6 +66,10 @@ assert.match(stabilityCss,/\.live-tool-state/u);
 assert.match(stabilityCss,/There is deliberately no approval\/authorization UI/u);
 
 assert.match(shell,/access-agent\.rebuild-layout\.v1/u);
+assert.match(shell,/viewportLimits\(\)/u);
+assert.match(shell,/window\.visualViewport\?\.addEventListener\('resize'/u);
+assert.match(shell,/resolution: 1dppx/u);
+assert.match(shell,/applyDimensions\(true\)/u);
 assert.match(shell,/showCenter\(view\)/u);
 assert.match(shell,/showRight\(view\)/u);
 assert.match(shell,/showBottom\(view\)/u);

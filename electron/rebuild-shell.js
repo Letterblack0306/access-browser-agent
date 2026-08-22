@@ -33,6 +33,17 @@
       this.bindResizer('left', '--left-w', 'leftWidth', event => clamp(event.clientX, 190, Math.min(420, window.innerWidth * 0.36)));
       this.bindResizer('right', '--right-w', 'rightWidth', event => clamp(window.innerWidth - event.clientX, 260, Math.min(480, window.innerWidth * 0.42)));
       this.bindResizer('bottom', '--bottom-h', 'bottomHeight', event => clamp(window.innerHeight - event.clientY - 22, 150, Math.min(430, window.innerHeight * 0.52)));
+      this.handleViewportChange = () => {
+        if (this.viewportFrame) cancelAnimationFrame(this.viewportFrame);
+        this.viewportFrame = requestAnimationFrame(() => {
+          this.viewportFrame = null;
+          this.applyDimensions(true);
+        });
+      };
+      window.addEventListener('resize', this.handleViewportChange, { passive: true });
+      window.visualViewport?.addEventListener('resize', this.handleViewportChange, { passive: true });
+      this.resolutionQuery = window.matchMedia?.('(resolution: 1dppx)') || null;
+      this.resolutionQuery?.addEventListener?.('change', this.handleViewportChange);
       const reset = this.doc.getElementById('resetLayout');
       reset?.addEventListener('click', () => this.reset());
       this.activateAll();
@@ -58,10 +69,29 @@
       this.findRootRule().style.setProperty(name, `${value}px`);
     }
 
-    applyDimensions() {
-      this.setLayoutVariable('--left-w', clamp(this.state.leftWidth, 190, 420));
-      this.setLayoutVariable('--right-w', clamp(this.state.rightWidth, 260, 480));
-      this.setLayoutVariable('--bottom-h', clamp(this.state.bottomHeight, 150, 430));
+    viewportLimits() {
+      const width = Math.max(960, Number(window.innerWidth) || 960);
+      const height = Math.max(640, Number(window.innerHeight) || 640);
+      return {
+        left: { min: 190, max: Math.max(190, Math.min(420, width * 0.36)) },
+        right: { min: 260, max: Math.max(260, Math.min(480, width * 0.42)) },
+        bottom: { min: 150, max: Math.max(150, Math.min(430, height * 0.52)) },
+      };
+    }
+
+    applyDimensions(persist = false) {
+      const limits = this.viewportLimits();
+      const next = {
+        leftWidth: clamp(this.state.leftWidth, limits.left.min, limits.left.max),
+        rightWidth: clamp(this.state.rightWidth, limits.right.min, limits.right.max),
+        bottomHeight: clamp(this.state.bottomHeight, limits.bottom.min, limits.bottom.max),
+      };
+      const changed = next.leftWidth !== this.state.leftWidth || next.rightWidth !== this.state.rightWidth || next.bottomHeight !== this.state.bottomHeight;
+      Object.assign(this.state, next);
+      this.setLayoutVariable('--left-w', next.leftWidth);
+      this.setLayoutVariable('--right-w', next.rightWidth);
+      this.setLayoutVariable('--bottom-h', next.bottomHeight);
+      if (persist && changed) this.save();
     }
 
     bindTabs(tabSelector, viewSelector, key) {
@@ -123,8 +153,8 @@
         const delta = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -12 : event.key === 'ArrowRight' || event.key === 'ArrowUp' ? 12 : 0;
         if (!delta) return;
         event.preventDefault();
-        const max = name === 'bottom' ? 430 : name === 'left' ? 420 : 480;
-        const min = name === 'bottom' ? 150 : name === 'left' ? 190 : 260;
+        const limits = this.viewportLimits()[name === 'bottom' ? 'bottom' : name];
+        const { min, max } = limits;
         this.state[key] = clamp(this.state[key] + delta, min, max);
         this.setLayoutVariable(cssVar, this.state[key]);
         this.save();
@@ -162,6 +192,10 @@
     }
 
     dispose() {
+      if (this.viewportFrame) cancelAnimationFrame(this.viewportFrame);
+      window.removeEventListener('resize', this.handleViewportChange);
+      window.visualViewport?.removeEventListener('resize', this.handleViewportChange);
+      this.resolutionQuery?.removeEventListener?.('change', this.handleViewportChange);
       for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
     }
   }
