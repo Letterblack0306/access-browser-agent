@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: `5ea7fef98cbc06f547b36f1516a408ad45f7b428`
+Source head: pending focused Cline provider-store import commit
 
 ## Product state
 
@@ -26,5 +26,9 @@ Runtime, provider, browser, and durable recovery authority remain unchanged. No 
 Live Electron/CDP acceptance is now proven: the saved exact ChatGPT target was verified, the LM Studio capability probe passed, relay start/check/stop completed, and final cleanup returned the runtime to a clean state. Pixel-level visual interaction remains outside this proof because the Windows Computer Use native pipe was unavailable. Local Electron launch was observed successfully with a responding `Access Agent — Rebuild` window.
 
 Monitor-aware layout reconciliation is implemented: persisted pane dimensions are recalculated against the current viewport after window, visual-viewport, and display-resolution changes.
+
+Cline auth integration now supports a read-only fallback import from `providers.cline.settings.auth` in the standard user provider store (`%USERPROFILE%\\.cline\\data\\settings\\providers.json`). `CLINE_PROVIDERS_PATH` overrides the default. Access Agent never writes or clears that external file; live Cline sign-in, refresh, and logout remain owned by Access Agent preferences.
+
+The Cline provider-store import smoke and full source checks pass. Live authenticated Cline model use still requires an authenticated provider and a successful live model readiness check.
 
 Untracked `section_09.md` is preserved and is not part of this change.

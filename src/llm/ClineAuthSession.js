@@ -1,9 +1,10 @@
 'use strict';
 
 const { IdePreferences } = require('../system/ide-preferences');
+const { readClineProviderCredentials } = require('./ClineProviderStore');
 
 class ClineAuthSession {
-  constructor({ loadCore, onAuth, onProgress, onPrompt, onPersist, preferencesPath = '' } = {}) {
+  constructor({ loadCore, onAuth, onProgress, onPrompt, onPersist, preferencesPath = '', clineProvidersPath = '' } = {}) {
     this.loadCore = loadCore || (() => import('@cline/core'));
     this.onAuth = typeof onAuth === 'function' ? onAuth : () => {};
     this.onProgress = typeof onProgress === 'function' ? onProgress : () => {};
@@ -12,6 +13,7 @@ class ClineAuthSession {
       : async prompt => String(prompt?.defaultValue || '');
     this.onPersist = typeof onPersist === 'function' ? onPersist : () => {};
     this.preferencesPath = preferencesPath;
+    this.clineProvidersPath = clineProvidersPath;
     this.credentials = null;
     this.lastError = null;
     this._loaded = false;
@@ -35,6 +37,13 @@ class ClineAuthSession {
           providerMetadata: saved.clineAuth.providerMetadata
         };
         this._persisted = true;
+      } else {
+        const imported = await readClineProviderCredentials(this.clineProvidersPath);
+        if (imported.credentials) {
+          this.credentials = imported.credentials;
+          this._persisted = false;
+          this._authSource = 'cline-provider-store';
+        }
       }
       return this.status();
     } catch (error) {
@@ -53,6 +62,7 @@ class ClineAuthSession {
         : null,
       error: this.lastError,
       persisted: this._persisted === true
+      ,source: this._authSource || (this._persisted ? 'access-agent-preferences' : null)
     };
   }
 
@@ -79,6 +89,7 @@ class ClineAuthSession {
       });
       if (!credentials?.access) throw new Error('Cline OAuth login returned no access token.');
       this.credentials = credentials;
+      this._authSource = 'access-agent-oauth';
       await this._saveCredentials();
       return this.status();
     } catch (error) {
@@ -122,6 +133,7 @@ class ClineAuthSession {
 
   async logout() {
     this.credentials = null;
+    this._authSource = null;
     this.lastError = null;
     await this._clearCredentials();
     this._persisted = false;

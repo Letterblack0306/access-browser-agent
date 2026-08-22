@@ -72,6 +72,7 @@ async function testAuthPersistence() {
 
     const first = new ClineAuthSession({
       preferencesPath: directory,
+      clineProvidersPath: path.join(directory, 'missing-cline-providers.json'),
       loadCore: async () => core,
     });
     const login = await first.login();
@@ -85,6 +86,7 @@ async function testAuthPersistence() {
 
     const second = new ClineAuthSession({
       preferencesPath: directory,
+      clineProvidersPath: path.join(directory, 'missing-cline-providers.json'),
       loadCore: async () => core,
     });
     const restored = await second.load();
@@ -101,6 +103,7 @@ async function testAuthPersistence() {
 
     const third = new ClineAuthSession({
       preferencesPath: directory,
+      clineProvidersPath: path.join(directory, 'missing-cline-providers.json'),
       loadCore: async () => core,
     });
     const afterRestart = await third.load();
