@@ -235,6 +235,28 @@ class ObservableBrowserInstructionRelay extends BrowserInstructionRelay {
       }
     }
   }
+
+  async _tick(options={}) {
+    if (this.loopScope) {
+      const loopState = this.journal.getLoopState(this.loopScope);
+      if (loopState?.deliveryResponse?.state === 'pending') {
+        const resolvedAt = new Date().toISOString();
+        this.journal.markLoopProgress(this.loopScope, {
+          deliveryResponse: {
+            ...loopState.deliveryResponse,
+            state: 'resolved',
+            resolvedAt,
+          },
+        });
+        this._event('browser_relay.delivery_response_resolved', {
+          status: 'running',
+          instructionId: loopState.deliveryResponse.sourceInstructionId || null,
+        });
+        return;
+      }
+    }
+    return super._tick(options);
+  }
 }
 
 function deliveryError(error){return{code:String(error?.code||'DELIVERY_FAILED'),message:error?.message||String(error)};}

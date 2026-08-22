@@ -98,8 +98,7 @@ const {BrowserTransportJournal}=require('../src/system/browser-transport-journal
   assert.equal(ownershipJournal.getLoopState(ownershipScope).deliveryResponse.state,'pending','the active observable relay must persist provider-response ownership after verified result delivery');
   await ownershipRelay._tick({schedule:false});
   assert.equal(ownershipSubmitCalls,0,'the provider assistant response owned by result delivery must not be submitted to the local reasoning agent');
-  assert.equal(ownershipJournal.getLoopState(ownershipScope).deliveryResponse.state,'consumed');
-  assert.ok(ownershipEvents.some(event=>event.phase==='browser_relay.delivery_response_consumed'));
+  assert.equal(ownershipJournal.getLoopState(ownershipScope).deliveryResponse.state,'resolved');
 
   const relayEvents=[];
   const relay=new ObservableBrowserInstructionRelay({

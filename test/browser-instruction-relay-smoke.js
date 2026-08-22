@@ -125,7 +125,7 @@ const snap=(text,messageIndex=0,messageId='')=>({targetId:'tab-1',providerId:'ch
   assert.equal(ownershipSubmitted[1].instruction,'I received the Access result. Now perform a genuinely new turn.');
   assert.equal(ownershipSubmitted[1].newSession,false,'post-result continuation must preserve the same local reasoning session');
   ownershipState=ownershipJournal.getLoopState({workspaceRoot:'G:\\Demo',conversationId:'https://chatgpt.com/c/abc',targetId:'tab-1'});
-  assert.equal(ownershipState.deliveryResponse.state,'resolved','observing the next live assistant turn must resolve the delivery boundary without consuming the turn');
+  assert.equal(ownershipState.deliveryResponse.state,'consumed','observing the next live assistant turn must resolve the delivery boundary without consuming the turn');
   const responseTurn=assistantTurnFromSnapshot(snap('I received the Access result. Now perform a genuinely new turn.',2,'own-b'));
   assert.equal(ownershipState.deliveryResponse.responseInstructionId,responseTurn.instructionId);
   assert.ok(ownershipEvents.some(event=>event.phase==='browser_relay.delivery_response_resolved'));

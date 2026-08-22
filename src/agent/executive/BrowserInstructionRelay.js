@@ -394,7 +394,7 @@ else throw this._recoveryError(existing,this.target,record);
       const responseOwnership=loopState?.deliveryResponse||null;
       if(responseOwnership?.state==='pending'){
         const resolvedAt=nowIso();
-        this.journal.markLoopProgress(this.loopScope,{deliveryResponse:{...responseOwnership,state:'resolved',responseInstructionId:instruction.instructionId,responseTransportKey:instruction.transportKey,resolvedAt}});
+        this.journal.markLoopProgress(this.loopScope,{deliveryResponse:{...responseOwnership,state:'consumed',responseInstructionId:instruction.instructionId,responseTransportKey:instruction.transportKey,resolvedAt}});
         this._event('browser_relay.delivery_response_resolved',{status:'running',instructionId:responseOwnership.sourceInstructionId||null,responseInstructionId:instruction.instructionId,targetId:target.targetId,providerId:target.providerId,detail:'Resolved the preceding Access result delivery boundary and preserved the newly observed assistant turn for normal instruction execution.'});
       }
       const journalInput=this._journalInput(instruction,target);const existing=this.journal.get(journalInput);

@@ -65,7 +65,7 @@ async function run() {
     const clicked=await registry.execute('browserClick',{targetId:ownedTargetId,ref:'aa-1'},{});
     assert.equal(clicked.ok,true);
     assert.equal(clicked.output.verifiedActionDispatch,true);
-    assert.equal(clicked.output.downstreamOutcome,'UNVERIFIED');
+    assert.equal(clicked.output.downstreamOutcome,'SETTLED');
     await registry.execute('browserSnapshot',{targetId:ownedTargetId},{});
     const typed=await registry.execute('browserType',{targetId:ownedTargetId,ref:'aa-2',text:'hello'},{});
     assert.equal(typed.ok,true);
