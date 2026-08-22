@@ -5,9 +5,10 @@ const { conversationIdFromUrl } = require('../src/system/runtime-correlation');
 const { BrowserToolRuntime } = require('../src/browser/browser-tool-runtime');
 
 class BrowserSessionAuthority {
-  constructor({ managedChrome, channel, relay } = {}) {
+  constructor({ managedChrome, generalManagedChrome = managedChrome, channel, relay } = {}) {
     if (!managedChrome || !channel || !relay) throw new Error('Browser session authority requires managed Chrome, provider channel, and relay.');
     this.managedChrome=managedChrome;
+    this.generalManagedChrome=generalManagedChrome;
     this.channel=channel;
     this.relay=relay;
     this.targets=[];
@@ -17,7 +18,7 @@ class BrowserSessionAuthority {
     this.error=null;
     this.browserTools=new BrowserToolRuntime({
       getEndpoint:async()=>{
-        const browser=await this._ensureLiveBrowser();
+        const browser=await this._ensureLiveGeneralBrowser();
         if(!browser?.endpoint){
           const error=new Error('Managed browser did not expose a CDP endpoint for general browser tools.');
           error.code='BROWSER_ENDPOINT_UNAVAILABLE';
@@ -54,6 +55,7 @@ class BrowserSessionAuthority {
     return{
       lifecycle:this.state,
       browser:this.managedChrome.status(),
+      generalBrowserBackend:this.generalManagedChrome.status(),
       targets:this.targets.map(target=>({...target})),
       createdTarget:this.createdTarget?{...this.createdTarget}:null,
       selectedTarget:this.relay.status().target,
@@ -137,6 +139,20 @@ class BrowserSessionAuthority {
     // consume this instead of trusting ManagedChrome status directly.
     const browser=await this._ensureLiveBrowser();
     return browser?.endpoint ? String(browser.endpoint) : '';
+  }
+
+  async _ensureLiveGeneralBrowser(){
+    const current=this.generalManagedChrome.status();
+    if(current.lifecycle==='ready'&&current.endpoint){
+      try{
+        await this.generalManagedChrome.readyEndpoint();
+        return this.generalManagedChrome.status();
+      }catch(staleError){
+        this._diag('ensure_general_browser','cached_endpoint_stale',{browser:current},staleError);
+        await this.generalManagedChrome.stop();
+      }
+    }
+    return this.generalManagedChrome.start();
   }
 
   async ensureBrowser(){
@@ -350,7 +366,11 @@ return {receipt,recovery,target:{...scope.target}};
 
   stop(){
     this.epoch+=1;this.createdTarget=null;this.targets=[];this.relay.clearTarget('Browser session stopped.');this.state='stopped';this.error=null;this._diag('stop_browser','start');
-    return this.managedChrome.stop().then(result=>{this._diag('stop_browser','success',{browser:result});return result;},error=>{this._diag('stop_browser','failed',{},error);throw error;});
+    return this.managedChrome.stop().then(async result=>{
+      if(this.generalManagedChrome!==this.managedChrome) await this.generalManagedChrome.stop();
+      this._diag('stop_browser','success',{browser:result,generalBrowser:this.generalManagedChrome.status()});
+      return result;
+    },error=>{this._diag('stop_browser','failed',{},error);throw error;});
   }
 }
 function recoveryAuthorityError(code,message){

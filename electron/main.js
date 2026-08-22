@@ -41,6 +41,7 @@ let agentRuntime;
 let mcpEnabled = false;
 let mcpClient;
 let managedChrome;
+let generalManagedChrome;
 let browserRelay;
 let browserAuthority;
 let taskStateRouterBridge;
@@ -516,6 +517,12 @@ app.whenReady().then(async () => {
     preferenceValues = await preferences.load();
     workspaceSync = new WorkspaceCloneSync();
     managedChrome = new ManagedChrome({ getSettings: () => preferenceValues });
+    generalManagedChrome = new ManagedChrome({
+      getSettings: () => ({
+        ...preferenceValues,
+        browserProfilePath: path.join(app.getPath('userData'), 'Managed Browser Tools'),
+      }),
+    });
     mcpEnabled = preferenceValues.mcpEnabled === true;
     mcpClient = new McpClient({ serverCommand: preferenceValues.mcpServerCommand });
     if (mcpEnabled && String(preferenceValues.mcpServerCommand || '').trim()) {
@@ -543,7 +550,7 @@ app.whenReady().then(async () => {
       storeResult: payload => new BrowserResultStore(path.join(app.getPath('userData'), 'agent-state', workspaceKey(workspaceRoot))).put(payload),
       onEvent: event => { if (windowRef && !windowRef.isDestroyed()) windowRef.webContents.send('ide:agent-event', event); },
     });
-    browserAuthority = new BrowserSessionAuthority({ managedChrome, channel:new ProviderChannel(), relay:browserRelay });
+    browserAuthority = new BrowserSessionAuthority({ managedChrome, generalManagedChrome, channel:new ProviderChannel(), relay:browserRelay });
     global.__accessAgentRetireBrowserBootstrap=(endpoint,targetId)=>browserAuthority._retireBootstrapTarget(endpoint,targetId);
     workspaceGit = new WorkspaceGitStatus(workspaceRoot);
     await startBridge(workspaceRoot);
@@ -566,6 +573,7 @@ app.on('before-quit', () => {
   terminalManager.dispose();
   if (mcpClient) mcpClient.stop().catch(() => {});
   if (managedChrome) managedChrome.stop().catch(() => {});
+  if (generalManagedChrome && generalManagedChrome !== managedChrome) generalManagedChrome.stop().catch(() => {});
   if (browserRelay) browserRelay.stop();
   if (workspaceSync) workspaceSync.stop();
   if (bridgeServer) bridgeServer.close();

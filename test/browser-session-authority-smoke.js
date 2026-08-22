@@ -51,6 +51,17 @@ const {BrowserSessionAuthority}=require('../electron/browser-session-authority')
     stop:async()=>({lifecycle:'stopped',endpoint:null,generation:2}),
   };
   const authority=new BrowserSessionAuthority({managedChrome,channel,relay});
+  const generalState={lifecycle:'ready',endpoint:'http://127.0.0.1:7440',generation:1};
+  const generalManagedChrome={
+    status:()=>({...generalState}),
+    readyEndpoint:async()=>generalState,
+    start:async()=>({...generalState}),
+    stop:async()=>({lifecycle:'stopped',endpoint:null,generation:2}),
+  };
+  const isolatedAuthority=new BrowserSessionAuthority({managedChrome,generalManagedChrome,channel,relay});
+  const generalBrowser=await isolatedAuthority._ensureLiveGeneralBrowser();
+  assert.equal(generalBrowser.endpoint,'http://127.0.0.1:7440');
+  assert.notEqual(isolatedAuthority.generalManagedChrome,isolatedAuthority.managedChrome,'general tools must have a distinct browser owner');
   const browser=await authority.openBrowser();
   assert.equal(browser.lifecycle,'browser_ready');
   assert.equal(managedChrome.status().bootstrapTargetId,'owned-bootstrap');
