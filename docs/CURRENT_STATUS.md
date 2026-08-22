@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: pending focused Cline provider-store import commit
+Source head: `4dddc0e50ad55609a8bc50e6a890136992c9b4ea`
 
 ## Product state
 
