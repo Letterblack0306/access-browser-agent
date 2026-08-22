@@ -39,7 +39,8 @@
 | `2026-08-22-monitor-aware-layout-reconciliation` | `completed` | Reconcile persisted IDE pane dimensions when the window moves across displays or its viewport/device scale changes. | `docs/change-intents/2026-08-22-monitor-aware-layout-reconciliation.md` |
 | `2026-08-22-cline-provider-store-import` | `in_progress` | Reuse an existing Cline login from the standard local provider store without exposing or mutating that store. | `docs/change-intents/2026-08-22-cline-provider-store-import.md` |
 | `2026-08-22-cline-live-readiness` | `completed` | Record authenticated live Cline completion, tool-calling, and structured-output readiness. | `docs/change-intents/2026-08-22-cline-live-readiness.md` |
-| `2026-08-22-browser-isolation-ax-hardening` | `in_progress` | Isolate general browser tabs in an Access-owned CDP context and expose bounded AX snapshot evidence. | `docs/change-intents/2026-08-22-browser-isolation-ax-hardening.md` |
+| `2026-08-22-browser-isolation-ax-hardening` | `completed` | Isolate general browser tabs in an Access-owned CDP context and expose bounded AX snapshot evidence. | `docs/change-intents/2026-08-22-browser-isolation-ax-hardening.md` |
+| `2026-08-22-agent-recovery-boundary` | `completed` | Fail closed after process restart when an execution step has no durable terminal outcome, requiring explicit reconciliation before new work. | `docs/change-intents/2026-08-22-agent-recovery-boundary.md` |
 
 ## Status values
 

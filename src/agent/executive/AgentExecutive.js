@@ -57,6 +57,7 @@ class AgentExecutive {
     } else {
       this.state = projectSession(this.events);
       this._emitState();
+      await this._ensureRecoveryBoundary();
     }
     this.inputSkills = skills || null;
     await this._updateSkillSeed(this.inputSkills);
@@ -66,6 +67,7 @@ class AgentExecutive {
 
   async submitInstruction(input = {}) {
     await this.initialize({ objective: input.objective || '' });
+    this._assertRecoveryReconciled();
     this._assertNotCancelled();
     const text = String(input.text || input.message || input.instruction || '').trim();
     if (!text) throw new Error('instruction text is required');
@@ -98,6 +100,7 @@ class AgentExecutive {
 
   async resume() {
     await this.initialize();
+    this._assertRecoveryReconciled();
     this._assertNotCancelled();
     if (this.state.status !== 'stopped') return this.run();
     this._stopRequested = false;
@@ -119,6 +122,7 @@ class AgentExecutive {
 
   async reviseObjective(objective, reason = 'user_revision') {
     await this.initialize();
+    this._assertRecoveryReconciled();
     this._assertNotCancelled();
     const value = String(objective || '').trim();
     if (!value) throw new Error('objective is required');
@@ -127,6 +131,23 @@ class AgentExecutive {
   }
 
   getState() { return this.state ? cloneJson(this.state) : null; }
+
+  async reconcileRecovery({ disposition = 'abandoned', reason = '' } = {}) {
+    await this.initialize();
+    if (!this.state.recoveryRequired) return this.getState();
+    const value = String(disposition || '').trim();
+    if (!['abandoned', 'verified_completed', 'retry_approved'].includes(value)) {
+      const error = new Error('Recovery disposition must be abandoned, verified_completed, or retry_approved.');
+      error.code = 'AGENT_RECOVERY_DISPOSITION_INVALID';
+      throw error;
+    }
+    await this._append('session.recovery_reconciled', {
+      stepId: this.state.recovery?.stepId || null,
+      disposition: value,
+      reason: String(reason || '').trim(),
+    });
+    return this.getState();
+  }
 
   async approve(approvalId, decision, reason = '') {
     await this.initialize();
@@ -141,6 +162,7 @@ class AgentExecutive {
   async _runLoop() {
     await this.initialize();
     this._assertNotCancelled();
+    this._assertRecoveryReconciled();
     if (this.state.status === 'stopped' || this.state.status === 'cancelled') return this.getState();
     await this._append('session.running', {});
 
@@ -218,8 +240,36 @@ class AgentExecutive {
     if (incoming && incoming !== current) { this.skillSeed = snapshot; await this._append('skills.activated', { skillIds: Array.isArray(snapshot.ids) ? snapshot.ids : [], hashes: snapshot.hashes || {}, hash: incoming, resolvedAt: new Date().toISOString() }); }
   }
 
+  async _ensureRecoveryBoundary() {
+    if (this.state?.recoveryRequired) return;
+    const started = new Set();
+    const terminal = new Set();
+    const reconciled = new Set();
+    for (const event of this.events) {
+      const stepId = String(event?.data?.stepId || '').trim();
+      if (!stepId) continue;
+      if (event.type === 'step.started') started.add(stepId);
+      if (event.type === 'step.completed' || event.type === 'step.failed') terminal.add(stepId);
+      if (event.type === 'session.recovery_reconciled') reconciled.add(stepId);
+    }
+    const ambiguousStepId = [...started].find(stepId => !terminal.has(stepId) && !reconciled.has(stepId));
+    if (!ambiguousStepId) return;
+    await this._append('session.recovery_required', {
+      stepId: ambiguousStepId,
+      reason: 'A process restart left an execution step without a durable terminal outcome. No new work may run until an operator reconciles it.',
+    });
+  }
+
   _abortCurrentAttempt(reason) { if (this._attemptController && !this._attemptController.signal.aborted) this._attemptController.abort(new Error(reason)); }
   _assertNotCancelled() { if (this.state?.status === 'cancelled' || this._cancelRequested) throw new Error('agent session is cancelled'); }
+  _assertRecoveryReconciled() {
+    if (!this.state?.recoveryRequired) return;
+    const error = new Error(`Agent recovery is required for step ${this.state.recovery?.stepId || 'unknown'} before new work can run.`);
+    error.code = 'AGENT_RECOVERY_REQUIRED';
+    error.classification = 'RECOVERY';
+    error.recovery = cloneJson(this.state.recovery);
+    throw error;
+  }
   _emitState() { this.onState(this.getState()); }
 }
 

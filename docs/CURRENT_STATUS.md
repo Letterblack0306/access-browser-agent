@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: `ff07f1f83b94a867ee6ce7b13c4287281e4c2d29`
+Source head: `main` (see `git rev-parse HEAD` for the exact published commit)
 
 ## Product state
 
@@ -31,8 +31,8 @@ Cline auth integration now supports a read-only fallback import from `providers.
 
 The Cline provider-store import smoke and full source checks pass. Live Cline readiness is now proven on the configured authenticated provider: completion, tool-calling, and structured JSON output all passed the product probe.
 
-General browser hardening now requests an Access-owned CDP browser context when strict isolation is enabled and projects a bounded native AX tree in browser snapshots. The active managed Chrome host rejects CDP target/context creation with `Not allowed`, so strict browser-context isolation and live AX acceptance remain host-blocked; normal browsing preserves logical target ownership with strict isolation disabled by default on unsupported hosts.
+General browser hardening now requests an Access-owned CDP browser context when strict isolation is enabled and projects a bounded native AX tree in browser snapshots. Managed Chrome live acceptance now proves ordinary HTTPS target creation, explicit navigation, and bounded AX snapshot retrieval. The host still rejects `Target.createBrowserContext` with `Not allowed`, so strict context isolation remains host-blocked; optional isolation now falls back explicitly to logical target ownership without aborting ordinary browsing.
 
-The existing durable runtime reconstruction regressions pass, but arbitrary process-death exactly-once recovery is not proven. The bounded native Windows PTY probe did not complete within the timeout, so the AttachConsole owner-map issue remains host/runtime-blocked.
+The native Windows PTY manager now has a live `pwsh.exe` create/write/exit round-trip proof. Durable agent recovery now fails closed when a restart leaves an execution step without a terminal event: new work is blocked until an explicit operator reconciliation. This removes silent replay risk, but exactly-once external side effects remain dependent on the external tool's idempotency/transaction contract and are not claimed here.
 
 Untracked `section_09.md` is preserved and is not part of this change.

@@ -158,7 +158,17 @@ class BrowserToolRuntime {
       }
       return null;
     }
-    const result = await client.Target.createBrowserContext({ disposeOnDetach: false });
+    let result;
+    try {
+      result = await client.Target.createBrowserContext({ disposeOnDetach: false });
+    } catch (cause) {
+      if (!this.requireIsolatedContext) return null;
+      const error = new Error('Managed Chrome rejected CDP browser-context isolation for general browser tabs.');
+      error.code = 'BROWSER_CONTEXT_ISOLATION_UNAVAILABLE';
+      error.classification = 'BROWSER';
+      error.causeCode = cause?.code || null;
+      throw error;
+    }
     const contextId = String(result?.browserContextId || '').trim();
     if (!contextId) {
       const error = new Error('Managed Chrome did not return an owned CDP browser context.');
@@ -281,6 +291,19 @@ class BrowserToolRuntime {
       this.currentTargetId = targetId;
     } finally {
       await client.close();
+    }
+    const navigationClient = await this.cdpFactory({ ...endpointParts(endpoint), target:targetId });
+    try {
+      if (navigationClient.Page?.enable) await navigationClient.Page.enable();
+      if (typeof navigationClient.Page?.navigate !== 'function') {
+        const error = new Error('Managed Chrome does not expose CDP page navigation for the opened browser tab.');
+        error.code = 'BROWSER_NAVIGATION_UNAVAILABLE';
+        error.classification = 'BROWSER';
+        throw error;
+      }
+      await navigationClient.Page.navigate({ url });
+    } finally {
+      await navigationClient.close();
     }
     const settlement = await this._withTarget(targetId, client => this._waitReadyAndSettle(client));
     return { ok:true, targetId, url:String(settlement?.url || url), title:String(settlement?.title || ''), readyState:settlement?.readyState || null, owned:true, settlement };

@@ -29,6 +29,8 @@ function createInitialState({ sessionId, workspaceRoot, objective = '', provider
     observations: [],
     retry: { attempt: 0, lastError: null },
     waiting: null,
+    recoveryRequired: false,
+    recovery: null,
     checkpointId: null,
     stopRequested: false,
     cancelRequested: false,
@@ -74,6 +76,27 @@ function reduceSessionEvent(previous, event) {
       state.waiting = null;
       state.stopRequested = false;
       state.cancelRequested = false;
+      break;
+    case 'session.recovery_required':
+      state.status = 'recovery_required';
+      state.recoveryRequired = true;
+      state.recovery = {
+        stepId: String(data.stepId || ''),
+        reason: String(data.reason || 'Execution stopped before its side effect outcome was durably recorded.'),
+        detectedAt: now,
+      };
+      state.waiting = { kind: 'recovery', reason: state.recovery.reason };
+      break;
+    case 'session.recovery_reconciled':
+      state.status = 'idle';
+      state.recoveryRequired = false;
+      state.recovery = {
+        ...(state.recovery || {}),
+        disposition: String(data.disposition || 'abandoned'),
+        reason: String(data.reason || ''),
+        reconciledAt: now,
+      };
+      state.waiting = null;
       break;
     case 'user.message': {
       const instructionId = String(data.instructionId || event.eventId);

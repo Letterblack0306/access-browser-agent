@@ -6,7 +6,7 @@
 
 ## Status
 
-in_progress
+completed
 
 ## Requested outcome
 
@@ -21,7 +21,7 @@ Keep the exact provider relay target in the managed persistent profile while cre
 - Create and dispose one owned CDP browser context for the general browser runtime.
 - Bind all general browser targets to that context and invalidate it on browser-generation changes.
 - Add bounded AX-tree projection to `browserSnapshot` when CDP Accessibility is available.
-- Add deterministic regression coverage for context ownership and AX projection.
+- Add deterministic regression coverage for context ownership, AX projection, optional-host fallback, and post-create navigation.
 
 ## Why
 
@@ -37,10 +37,12 @@ The current general browser runtime creates ordinary tabs in the browser's defau
 
 ## Post-change update
 
-Bounded AX projection and an opt-in strict CDP-context path are implemented. The active managed Chrome host rejects both new-target/context control with `Not allowed`, so strict isolation and live AX acceptance remain explicit host capability blockers; the normal runtime preserves existing logical ownership behavior rather than failing all ordinary browsing.
+Bounded AX projection and an opt-in strict CDP-context path are implemented. Live Managed Chrome acceptance proves ordinary HTTPS target creation, explicit Page navigation, readiness/settlement, and AX retrieval. The host rejects optional CDP browser-context creation with `Not allowed`; the runtime now records that as an explicit optional-isolation fallback and continues with logical ownership. Strict isolation remains host-blocked.
 
 ## Validation evidence
 
 - `node test/browser-tool-runtime-smoke.js` — PASS
 - `npm run check` — PASS
 - Live managed Chrome `Target.createBrowserContext` probe — BLOCKED by host response `Not allowed`
+- Live Managed Chrome `BrowserToolRuntime.open` + `snapshot` probe — PASS (`https://example.com/`, AX `available`, 15 nodes)
+- `git diff --check` — PASS

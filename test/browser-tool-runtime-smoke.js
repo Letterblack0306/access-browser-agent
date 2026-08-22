@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { BrowserToolRuntime, normalizeWebUrl } = require('../src/browser/browser-tool-runtime');
 
-function createFakeCdp() {
+function createFakeCdp({ rejectContext = false } = {}) {
   const pages = new Map([
     ['chat-transport', { id:'chat-transport', type:'page', url:'https://chatgpt.com/c/transport', title:'Chat transport', readyState:'complete', text:'transport', typed:'', settlementStartedAt:0, settlementLastMutationAt:0, settlementRevision:0 }],
   ]);
@@ -17,6 +17,7 @@ function createFakeCdp() {
       return {
         Target:{
           createBrowserContext:async()=>{
+            if (rejectContext) throw Object.assign(new Error('Not allowed'), { code:'TARGET_CONTEXT_NOT_ALLOWED' });
             const browserContextId=`browser-context-${++contextSequence}`;
             events.push({type:'context-create',browserContextId});
             return{browserContextId};
@@ -223,6 +224,20 @@ async function run() {
   assert.equal(harness.pages.has(replacement.targetId),false);
   assert.equal(harness.pages.has('chat-transport'),true,'closing a browser-owned target must not close the ChatGPT transport tab');
   assert.equal(harness.events.some(event=>event.type==='context-dispose'),true,'closing the last general target must dispose its isolated context');
+
+  const fallbackHarness=createFakeCdp({ rejectContext:true });
+  const fallbackRuntime=new BrowserToolRuntime({
+    cdpFactory:fallbackHarness.factory,
+    getEndpoint:async()=> 'http://127.0.0.1:9444',
+    requireIsolatedContext:false,
+    readinessTimeoutMs:500,
+    pollIntervalMs:25,
+    settlementQuietMs:50,
+    settlementTimeoutMs:500,
+  });
+  const fallbackOpened=await fallbackRuntime.open({ url:'https://example.com/fallback' });
+  assert.equal(fallbackOpened.ok,true,'optional isolation must fall back when the host rejects context creation');
+  assert.equal(fallbackHarness.events.some(event=>event.type==='create'),true);
 
   console.log('browser-tool-runtime-smoke: PASS');
 }

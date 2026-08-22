@@ -110,6 +110,11 @@ class AgentSessionRuntime {
     return executive.resume();
   }
 
+  async reconcileRecovery(sessionId, options = {}) {
+    const executive = await this.getSession(sessionId);
+    return executive.reconcileRecovery(options);
+  }
+
   async cancel(sessionId, reason) {
     const executive = await this.getSession(sessionId);
     return executive.cancel(reason);
