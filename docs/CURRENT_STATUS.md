@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: `47f673cc611dccc82e5fbdb04cc99db1e6ec2611`
+Source head: `ff07f1f83b94a867ee6ce7b13c4287281e4c2d29`
 
 ## Product state
 
@@ -30,5 +30,9 @@ Monitor-aware layout reconciliation is implemented: persisted pane dimensions ar
 Cline auth integration now supports a read-only fallback import from `providers.cline.settings.auth` in the standard user provider store (`%USERPROFILE%\\.cline\\data\\settings\\providers.json`). `CLINE_PROVIDERS_PATH` overrides the default. Access Agent never writes or clears that external file; live Cline sign-in, refresh, and logout remain owned by Access Agent preferences.
 
 The Cline provider-store import smoke and full source checks pass. Live Cline readiness is now proven on the configured authenticated provider: completion, tool-calling, and structured JSON output all passed the product probe.
+
+General browser hardening now requests an Access-owned CDP browser context when strict isolation is enabled and projects a bounded native AX tree in browser snapshots. The active managed Chrome host rejects CDP target/context creation with `Not allowed`, so strict browser-context isolation and live AX acceptance remain host-blocked; normal browsing preserves logical target ownership with strict isolation disabled by default on unsupported hosts.
+
+The existing durable runtime reconstruction regressions pass, but arbitrary process-death exactly-once recovery is not proven. The bounded native Windows PTY probe did not complete within the timeout, so the AttachConsole owner-map issue remains host/runtime-blocked.
 
 Untracked `section_09.md` is preserved and is not part of this change.

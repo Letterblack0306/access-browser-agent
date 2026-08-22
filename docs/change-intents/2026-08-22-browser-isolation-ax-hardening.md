@@ -31,12 +31,13 @@ The current general browser runtime creates ordinary tabs in the browser's defau
 
 - `src/browser/browser-tool-runtime.js`
 - `test/browser-tool-runtime-smoke.js`
+- `docs/CURRENT_STATUS.md`
 - `docs/change-intents/2026-08-22-browser-isolation-ax-hardening.md`
 - `docs/CHANGE_INDEX.md`
 
 ## Post-change update
 
-Bounded AX projection and an opt-in strict CDP-context path are implemented. The active managed Chrome host rejects `Target.createBrowserContext` with `Not allowed`, so strict isolation remains an explicit host capability blocker and the normal runtime preserves its existing logical ownership behavior rather than failing all ordinary browsing.
+Bounded AX projection and an opt-in strict CDP-context path are implemented. The active managed Chrome host rejects both new-target/context control with `Not allowed`, so strict isolation and live AX acceptance remain explicit host capability blockers; the normal runtime preserves existing logical ownership behavior rather than failing all ordinary browsing.
 
 ## Validation evidence
 
