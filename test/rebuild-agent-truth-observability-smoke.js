@@ -10,7 +10,7 @@ const {RuntimeDiagnosticLog}=require('../src/system/runtime-diagnostic-log');
 const {setDiagnosticSink,subscribeDiagnostic,emitDiagnostic}=require('../src/system/runtime-diagnostic-bus');
 const {createCorrelation,extendCorrelation,conversationIdFromUrl}=require('../src/system/runtime-correlation');
 const {runWithCorrelation}=require('../src/system/runtime-correlation-context');
-const {BrowserEvidenceStore,ObservableProviderChannel,ObservableBrowserInstructionRelay,renderedMarker,normalizeRenderedText}=require('../src/browser/observable-browser-runtime');
+const {BrowserEvidenceStore,ObservableProviderChannel,ObservableBrowserInstructionRelay,renderedMarker,normalizeRenderedText,defaultBrowserEvidenceRoot}=require('../src/browser/observable-browser-runtime');
 const {BrowserTransportJournal}=require('../src/system/browser-transport-journal');
 
 (async()=>{
@@ -42,8 +42,13 @@ const {BrowserTransportJournal}=require('../src/system/browser-transport-journal
   assert.equal(completion.providerRequestId,'req-123');assert.equal(completion.providerStopReason,'tool_calls');assert.equal(completion.providerEventType,'chat.completion');assert.equal(completion.toolCalls[0].name,'diagnostic_probe');
 
   const store=new BrowserEvidenceStore(path.join(root,'artifacts'));
+  assert.equal(defaultBrowserEvidenceRoot(path.join(root,'diagnostics')),path.join(root,'diagnostics','browser-evidence'));
   const artifact=await store.put({dom:{url:'https://chatgpt.com/c/abc',composerCount:1},correlation,privacy:{state:'minimized',screenshotPolicy:'disabled_by_default',containsConversationContent:false}});
   assert.equal(artifact.refs.length,1);assert.equal(artifact.privacy.containsConversationContent,false);assert.equal(artifact.refs[0].type,'dom');assert.ok(artifact.refs[0].sha256&&fs.existsSync(artifact.refs[0].path));
+  const screenshotArtifact=await store.put({screenshotBase64:Buffer.from('screenshot-proof').toString('base64'),correlation,privacy:{state:'minimized',screenshotPolicy:'raw_local_opt_in',containsConversationContent:true}});
+  const screenshotRef=screenshotArtifact.refs.find(ref=>ref.type==='screenshot');
+  assert.ok(screenshotRef&&screenshotRef.path.startsWith(path.join(root,'artifacts')),'opt-in screenshots must remain in the configured evidence root');
+  assert.ok(screenshotRef.sha256&&fs.existsSync(screenshotRef.path),'opt-in screenshot evidence must be hashed and persisted');
 
   const resultEnvelope='=== ACCESS AGENT RESULT START ===\nINSTRUCTION ID: i-77\nSTATUS: COMPLETE\nMODEL REPORT:\nFinished safely.\n=== ACCESS AGENT RESULT END ===';
   const marker=renderedMarker(resultEnvelope);

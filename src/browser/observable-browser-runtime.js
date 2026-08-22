@@ -11,6 +11,13 @@ const { createCorrelation, extendCorrelation, newId } = require('../system/runti
 const RETRYABLE_DELIVERY_CODES=new Set([
   'COMPOSER_NOT_FOUND','PROVIDER_GENERATING','SEND_BUTTON_UNAVAILABLE','TARGET_TEMPORARILY_UNAVAILABLE',
 ]);
+const DEFAULT_BROWSER_EVIDENCE_DIRECTORY='browser-evidence';
+
+function defaultBrowserEvidenceRoot(diagnosticRoot){
+  const root=String(diagnosticRoot||'').trim();
+  if(!root)throw new Error('diagnosticRoot is required to resolve the browser evidence directory.');
+  return path.resolve(root,DEFAULT_BROWSER_EVIDENCE_DIRECTORY);
+}
 
 class BrowserEvidenceStore {
   constructor(root) { this.root=path.resolve(root); }
@@ -290,4 +297,4 @@ function renderedMarker(text){
   return`${identity.startMarker} INSTRUCTION ID: ${identity.instructionId}${status?` STATUS: ${status}`:''}${identity.resultRecordSha256?` RESULT RECORD SHA256: ${identity.resultRecordSha256}`:''}`;
 }
 
-module.exports={BrowserEvidenceStore,ObservableProviderChannel,ObservableBrowserInstructionRelay,renderedMarker,normalizeRenderedText,renderedEnvelopeIdentity,renderedMessageMatchesIdentity};
+module.exports={BrowserEvidenceStore,ObservableProviderChannel,ObservableBrowserInstructionRelay,renderedMarker,normalizeRenderedText,renderedEnvelopeIdentity,renderedMessageMatchesIdentity,DEFAULT_BROWSER_EVIDENCE_DIRECTORY,defaultBrowserEvidenceRoot};

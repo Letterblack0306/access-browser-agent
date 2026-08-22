@@ -17,7 +17,7 @@ const {ChangeGovernanceGuard}=require('../src/agent/guards/ChangeGovernanceGuard
 const {RUNTIME_MODULES}=require('../src/system/module-registry');
 const providerModule=require('../src/browser/provider-channel');
 const relayModule=require('../src/agent/executive/BrowserInstructionRelay');
-const {BrowserEvidenceStore,ObservableProviderChannel,ObservableBrowserInstructionRelay}=require('../src/browser/observable-browser-runtime');
+const {BrowserEvidenceStore,ObservableProviderChannel,ObservableBrowserInstructionRelay,defaultBrowserEvidenceRoot}=require('../src/browser/observable-browser-runtime');
 
 const diagnosticRoot=path.join(app.getPath('userData'),'diagnostics');
 const diagnosticLog=new RuntimeDiagnosticLog({
@@ -71,7 +71,7 @@ if(process.platform==='win32')process.env.PWSH_EXE=interactiveShell.executable;
 else process.env.SHELL=interactiveShell.executable;
 emitDiagnostic({source:'machine-environment',category:'environment',action:'interactive_shell_resolved',phase:'success',data:{platform:process.platform,arch:process.arch,shell:interactiveShell.executable,source:interactiveShell.source,requested:interactiveShell.requested||null}});
 
-const browserEvidenceStore=new BrowserEvidenceStore(path.join(diagnosticRoot,'browser-evidence'));
+const browserEvidenceStore=new BrowserEvidenceStore(defaultBrowserEvidenceRoot(diagnosticRoot));
 class AppProviderChannel extends ObservableProviderChannel{
   constructor(options={}){super({...options,evidenceStore:options.evidenceStore||browserEvidenceStore});}
 }

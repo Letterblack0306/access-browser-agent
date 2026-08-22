@@ -33,6 +33,8 @@ The Cline provider-store import smoke and full source checks pass. Live Cline re
 
 General browser hardening now uses a separate Access-owned Managed Chrome process/profile for agent browsing, distinct from the persistent provider relay browser. Managed Chrome live acceptance proves distinct endpoints/profiles, ordinary HTTPS target creation, explicit navigation, and bounded AX snapshot retrieval. The host still rejects `Target.createBrowserContext` with `Not allowed`; process/profile isolation now provides the product boundary and optional CDP context isolation remains an extra host-dependent hardening path.
 
+Opt-in browser screenshots remain enabled with `ACCESS_AGENT_CAPTURE_BROWSER_SCREENSHOT=1`. Their deterministic default location is Electron `app.getPath('userData')/diagnostics/browser-evidence`, alongside correlated minimized DOM evidence and SHA-256 references; screenshots remain disabled by default.
+
 The native Windows PTY manager now has a live `pwsh.exe` create/write/exit round-trip proof. Durable agent recovery now fails closed when a restart leaves an execution step without a terminal event: new work is blocked until an explicit operator reconciliation. This removes silent replay risk, but exactly-once external side effects remain dependent on the external tool's idempotency/transaction contract and are not claimed here.
 
 Untracked `section_09.md` is preserved and is not part of this change.
