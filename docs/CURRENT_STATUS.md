@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: `bfa69d71a45dacb257000951afb772b872eb56a3`
+Source head: `40367da86e671df8dc51e2649a2b3df187b2a99c`
 
 ## Product state
 
@@ -24,5 +24,7 @@ External BirdEye/workspace-handoff UI has been removed from the product surface.
 Runtime, provider, browser, and durable recovery authority remain unchanged. No second UI state store, router, or runtime was introduced.
 
 Live Electron/CDP acceptance is now proven: the saved exact ChatGPT target was verified, the LM Studio capability probe passed, relay start/check/stop completed, and final cleanup returned the runtime to a clean state. Pixel-level visual interaction remains outside this proof because the Windows Computer Use native pipe was unavailable. Local Electron launch was observed successfully with a responding `Access Agent — Rebuild` window.
+
+Monitor-aware layout reconciliation is implemented: persisted pane dimensions are recalculated against the current viewport after window, visual-viewport, and display-resolution changes.
 
 Untracked `section_09.md` is preserved and is not part of this change.
