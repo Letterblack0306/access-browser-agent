@@ -13,6 +13,7 @@ External BirdEye/workspace-handoff UI has been removed from the product surface.
 
 - `npm run check:rebuild`: PASS
 - `npm run check`: PASS
+- `npm run acceptance:ui` with `ACCESS_AGENT_ACCEPTANCE_STEP_TIMEOUT_MS=120000`: PASS (all 8 steps)
 - Standalone current UI smoke tests: PASS
 - External UI-surface removal smoke: PASS
 - BirdEye backend state smoke: PASS
@@ -22,6 +23,6 @@ External BirdEye/workspace-handoff UI has been removed from the product surface.
 
 Runtime, provider, browser, and durable recovery authority remain unchanged. No second UI state store, router, or runtime was introduced.
 
-Live visual interaction is not certified in this checkpoint because the Windows Computer Use native pipe was unavailable. Local Electron launch was observed successfully with a responding `Access Agent — Rebuild` window.
+Live Electron/CDP acceptance is now proven: the saved exact ChatGPT target was verified, the LM Studio capability probe passed, relay start/check/stop completed, and final cleanup returned the runtime to a clean state. Pixel-level visual interaction remains outside this proof because the Windows Computer Use native pipe was unavailable. Local Electron launch was observed successfully with a responding `Access Agent — Rebuild` window.
 
 Untracked `section_09.md` is preserved and is not part of this change.

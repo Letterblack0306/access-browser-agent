@@ -1,5 +1,31 @@
 # Change Intent: Local UI External Surface Removal
 
+## Change ID
+
+`2026-08-22-local-ui-external-surface-removal`
+
+## Status
+
+`completed`
+
+## Requested outcome
+
+Keep the user-facing product focused on the local IDE, local agent, and managed browser workflow.
+
+## Intent
+
+Remove external BirdEye/workspace-handoff UI surfaces while preserving backend state coverage and the existing local runtime architecture.
+
+## Planned changes
+
+- Remove external UI controls, bindings, preload methods, IPC handlers, and registry IDs.
+- Preserve backend handoff state and authority behavior.
+- Align standalone UI smoke tests with the current rebuild architecture.
+
+## Why
+
+The product outcome is the working local IDE/agent/browser experience; external workspace UI nodes were outside that scope and created stale UI contracts.
+
 ## Task
 
 Keep the Access Browser Agent UI focused on the local IDE, local agent, and browser workflow by removing external BirdEye/workspace-handoff UI surfaces and updating stale UI tests to the current rebuild architecture.
@@ -30,8 +56,18 @@ Keep the Access Browser Agent UI focused on the local IDE, local agent, and brow
 - BirdEye backend state smoke — PASS
 - `git diff --check` — PASS
 
-## Status
+## Post-change update
 
-Implementation complete. Live visual interaction remains unproven because the Windows Computer Use native pipe was unavailable; local Electron launch itself was observed with window title `Access Agent — Rebuild` and a responding process.
+The external UI surface removal and the focused UI smoke-contract alignment are complete. The working product path remains local and runtime-backed.
+
+## Validation evidence
+
+- `npm run acceptance:ui` with `ACCESS_AGENT_ACCEPTANCE_STEP_TIMEOUT_MS=120000` — PASS (all 8 steps)
+- Exact ChatGPT target verification — PASS
+- LM Studio capability probe for `qwen/qwen3-vl-8b` — PASS during acceptance
+- Pixel-level visual interaction remains unproven because the Windows Computer Use native pipe was unavailable; local Electron launch was observed with a responding `Access Agent — Rebuild` window.
+- `npm run check:rebuild` — PASS
+- `npm run check` — PASS
+- `git diff --check` — PASS
 
 Implementation commit: `82093575de2fbc888de08b05de66672c604f6f65`
