@@ -1,7 +1,7 @@
 # Access Browser Agent Current Status
 
 Updated: 2026-08-22
-Source head: `40367da86e671df8dc51e2649a2b3df187b2a99c`
+Source head: `5ea7fef98cbc06f547b36f1516a408ad45f7b428`
 
 ## Product state
 
