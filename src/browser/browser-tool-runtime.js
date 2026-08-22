@@ -5,6 +5,7 @@ const { endpointParts } = require('./provider-channel');
 
 const DEFAULT_TEXT_LIMIT = 24000;
 const DEFAULT_INTERACTIVE_LIMIT = 120;
+const DEFAULT_ACCESSIBILITY_LIMIT = 240;
 
 function normalizeWebUrl(value) {
   let url;
@@ -54,6 +55,8 @@ class BrowserToolRuntime {
     settlementTimeoutMs = 2000,
     textLimit = DEFAULT_TEXT_LIMIT,
     interactiveLimit = DEFAULT_INTERACTIVE_LIMIT,
+    accessibilityLimit = DEFAULT_ACCESSIBILITY_LIMIT,
+    requireIsolatedContext = false,
   } = {}) {
     if (typeof getEndpoint !== 'function') throw new Error('BrowserToolRuntime requires getEndpoint().');
     this.cdpFactory = cdpFactory;
@@ -65,8 +68,12 @@ class BrowserToolRuntime {
     this.settlementTimeoutMs = Math.max(this.settlementQuietMs + this.pollIntervalMs, Number(settlementTimeoutMs) || 2000);
     this.textLimit = Math.max(1000, Number(textLimit) || DEFAULT_TEXT_LIMIT);
     this.interactiveLimit = Math.max(10, Math.min(500, Number(interactiveLimit) || DEFAULT_INTERACTIVE_LIMIT));
+    this.accessibilityLimit = Math.max(20, Math.min(500, Number(accessibilityLimit) || DEFAULT_ACCESSIBILITY_LIMIT));
+    this.requireIsolatedContext = requireIsolatedContext !== false;
     this.ownedTargets = new Map();
     this.currentTargetId = null;
+    this.browserContextId = null;
+    this.browserContextEndpoint = null;
   }
 
   _assertAllowedUrl(value) {
@@ -133,6 +140,65 @@ class BrowserToolRuntime {
       throw error;
     } finally {
       await client.close();
+    }
+  }
+
+  async _ensureIsolatedContext(client, endpoint) {
+    if (this.browserContextId && this.browserContextEndpoint === endpoint) return this.browserContextId;
+    if (this.browserContextId && this.browserContextEndpoint !== endpoint) {
+      this.browserContextId = null;
+      this.browserContextEndpoint = null;
+    }
+    if (typeof client.Target?.createBrowserContext !== 'function') {
+      if (this.requireIsolatedContext) {
+        const error = new Error('Managed Chrome does not expose CDP browser-context isolation for general browser tabs.');
+        error.code = 'BROWSER_CONTEXT_ISOLATION_UNAVAILABLE';
+        error.classification = 'BROWSER';
+        throw error;
+      }
+      return null;
+    }
+    const result = await client.Target.createBrowserContext({ disposeOnDetach: false });
+    const contextId = String(result?.browserContextId || '').trim();
+    if (!contextId) {
+      const error = new Error('Managed Chrome did not return an owned CDP browser context.');
+      error.code = 'BROWSER_CONTEXT_CREATE_FAILED';
+      error.classification = 'BROWSER';
+      throw error;
+    }
+    this.browserContextId = contextId;
+    this.browserContextEndpoint = endpoint;
+    return contextId;
+  }
+
+  async _disposeIsolatedContext(client, endpoint) {
+    const contextId = this.browserContextId;
+    if (!contextId || this.browserContextEndpoint !== endpoint) return;
+    this.browserContextId = null;
+    this.browserContextEndpoint = null;
+    if (typeof client.Target?.disposeBrowserContext === 'function') {
+      await client.Target.disposeBrowserContext({ browserContextId: contextId });
+    }
+  }
+
+  async _accessibilitySnapshot(client) {
+    if (typeof client.Accessibility?.getFullAXTree !== 'function') {
+      return { status:'unavailable', code:'BROWSER_AX_UNAVAILABLE', nodes:[] };
+    }
+    try {
+      await client.Accessibility.enable?.();
+      const tree = await client.Accessibility.getFullAXTree();
+      const nodes = (Array.isArray(tree?.nodes) ? tree.nodes : []).slice(0, this.accessibilityLimit).map(node => ({
+        nodeId: String(node?.nodeId || ''),
+        role: node?.role?.value == null ? null : String(node.role.value),
+        name: node?.name?.value == null ? null : String(node.name.value).slice(0, 300),
+        value: node?.value?.value == null ? null : String(node.value.value).slice(0, 300),
+        ignored: node?.ignored === true,
+        childIds: Array.isArray(node?.childIds) ? node.childIds.slice(0, 40).map(String) : [],
+      }));
+      return { status:'available', nodes, truncated:(tree?.nodes?.length || 0) > nodes.length };
+    } catch (error) {
+      return { status:'unavailable', code:'BROWSER_AX_READ_FAILED', nodes:[] };
     }
   }
 
@@ -207,10 +273,11 @@ class BrowserToolRuntime {
     const client = await this.cdpFactory(endpointParts(endpoint));
     let targetId = '';
     try {
-      const created = await client.Target.createTarget({ url });
+      const browserContextId = await this._ensureIsolatedContext(client, endpoint);
+      const created = await client.Target.createTarget({ url, ...(browserContextId ? { browserContextId } : {}) });
       targetId = String(created?.targetId || '').trim();
       if (!targetId) throw new Error('Chrome did not return a target id for the new browsing tab.');
-      this.ownedTargets.set(targetId, { targetId, endpoint, createdAt:new Date().toISOString(), requestedUrl:url });
+      this.ownedTargets.set(targetId, { targetId, endpoint, browserContextId:browserContextId || null, createdAt:new Date().toISOString(), requestedUrl:url });
       this.currentTargetId = targetId;
     } finally {
       await client.close();
@@ -267,7 +334,7 @@ class BrowserToolRuntime {
       const value = await evaluateValue(client, expression) || {};
       if (value?.url) this._assertAllowedUrl(value.url);
       this.currentTargetId = targetId;
-      return { ok:true, targetId, ...value };
+      return { ok:true, targetId, ...value, accessibility:await this._accessibilitySnapshot(client) };
     });
   }
 
@@ -340,7 +407,19 @@ class BrowserToolRuntime {
     }
     this.ownedTargets.delete(targetId);
     if (this.currentTargetId === targetId) this.currentTargetId = this.ownedTargets.keys().next().value || null;
+    if (!this.ownedTargets.size) await this._disposeIsolatedContext(client, endpoint);
     return { ok:true, targetId, currentTargetId:this.currentTargetId };
+  }
+
+  async dispose() {
+    const endpoint = this.browserContextEndpoint;
+    if (!endpoint || !this.browserContextId) return { ok:true, disposed:false };
+    const client = await this.cdpFactory(endpointParts(endpoint));
+    try { await this._disposeIsolatedContext(client, endpoint); }
+    finally { await client.close(); }
+    this.ownedTargets.clear();
+    this.currentTargetId = null;
+    return { ok:true, disposed:true };
   }
 }
 
@@ -350,4 +429,5 @@ module.exports = {
   evaluateValue,
   DEFAULT_TEXT_LIMIT,
   DEFAULT_INTERACTIVE_LIMIT,
+  DEFAULT_ACCESSIBILITY_LIMIT,
 };

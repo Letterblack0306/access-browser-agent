@@ -8,6 +8,7 @@ function createFakeCdp() {
     ['chat-transport', { id:'chat-transport', type:'page', url:'https://chatgpt.com/c/transport', title:'Chat transport', readyState:'complete', text:'transport', typed:'', settlementStartedAt:0, settlementLastMutationAt:0, settlementRevision:0 }],
   ]);
   let sequence = 0;
+  let contextSequence = 0;
   const events = [];
 
   async function factory(options = {}) {
@@ -15,6 +16,12 @@ function createFakeCdp() {
     if (!targetId) {
       return {
         Target:{
+          createBrowserContext:async()=>{
+            const browserContextId=`browser-context-${++contextSequence}`;
+            events.push({type:'context-create',browserContextId});
+            return{browserContextId};
+          },
+          disposeBrowserContext:async({browserContextId})=>{events.push({type:'context-dispose',browserContextId});return{};},
           createTarget:async ({url})=>{
             const id=`browser-${++sequence}`;
             pages.set(id,{id,type:'page',url,title:`Page ${sequence}`,readyState:'complete',text:`Body for ${url}`,typed:'',settlementStartedAt:0,settlementLastMutationAt:0,settlementRevision:0});
@@ -105,6 +112,10 @@ function createFakeCdp() {
       Input:{
         insertText:async({text})=>{page.typed+=String(text);events.push({type:'insertText',targetId,text:String(text)});},
       },
+      Accessibility:{
+        enable:async()=>{},
+        getFullAXTree:async()=>({nodes:[{nodeId:'root',role:{value:'RootWebArea'},name:{value:page.title},ignored:false,childIds:[]}]}),
+      },
       close:async()=>{},
     };
   }
@@ -156,6 +167,9 @@ async function run() {
   assert.equal(snapshot.interactive[0].ref,'aa-1');
   assert.equal(snapshot.interactive[1].ref,'aa-2');
   assert.equal(snapshot.interactive[2].ref,'aa-3');
+  assert.equal(snapshot.accessibility.status,'available');
+  assert.equal(snapshot.accessibility.nodes[0].role,'RootWebArea');
+  assert.equal(harness.events.some(event=>event.type==='context-create'),true);
 
   const clicked=await runtime.click({targetId:opened.targetId,ref:'aa-1'});
   assert.equal(clicked.ok,true);
@@ -208,6 +222,7 @@ async function run() {
   assert.equal(closed.ok,true);
   assert.equal(harness.pages.has(replacement.targetId),false);
   assert.equal(harness.pages.has('chat-transport'),true,'closing a browser-owned target must not close the ChatGPT transport tab');
+  assert.equal(harness.events.some(event=>event.type==='context-dispose'),true,'closing the last general target must dispose its isolated context');
 
   console.log('browser-tool-runtime-smoke: PASS');
 }
