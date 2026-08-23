@@ -255,7 +255,7 @@ const recovery=record?.key && typeof this.journal.getRecovery==='function'
 : null;
 if(!recovery?.reconciliation)throw this._recoveryError(existing,this.target,record);
 }
-this.lifecycle='stopped';this.error=null;
+this.lifecycle='checking_provider';this.error=null;
 return{ok:true,recoveryRequired:false,...this.status()};
 }
         if(record?.state==='delivered'||isSafeConsumedBaseline(record))this.lastHash=digest;
@@ -281,7 +281,7 @@ else throw this._recoveryError(existing,this.target,record);
           }
         }
       }
- if(recoveryOnly){this.lifecycle='stopped';this.error=null;return{ok:true,recoveryRequired:false,...this.status()};}
+ if(recoveryOnly){this.lifecycle='checking_provider';this.error=null;return{ok:true,recoveryRequired:false,...this.status()};}
       this.generation+=1;this.activeTarget={...this.target};this.running=true;this.error=null;
       if(restoredPending){
         restoredPending.generation=this.generation;this.pending=restoredPending;this.lifecycle='result_queued';
