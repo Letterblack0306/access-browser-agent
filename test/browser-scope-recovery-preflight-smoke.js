@@ -104,6 +104,8 @@ const snap=(text,messageIndex,messageId)=>({
   assert.equal(preflight.ok,true);
   assert.equal(preflight.recoveryRequired,false);
   assert.equal(resumed.status().running,false,'recovery-only preflight must remain read-only');
+  assert.equal(resumed.status().lifecycle,'checking_provider','successful recovery-only preflight must remain non-terminal while provider readiness is being resolved');
+  assert.equal(preflight.lifecycle,'checking_provider','returned preflight status must not project a terminal stopped lifecycle');
   assert.equal(submissions,0,'successful recovery-only preflight must still execute zero work');
   assert.equal(resumedEvents.some(event=>event.phase==='browser_relay.instruction_recovery_required'),false);
 
