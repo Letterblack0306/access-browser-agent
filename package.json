@@ -12,6 +12,7 @@
     "check:module-registry": "node scripts/module-registry.js check && node test/module-registry-smoke.js",
     "check:workspace-sync": "node --check src/system/workspace-clone-sync.js && node test/workspace-clone-sync-smoke.js",
     "start": "electron .",
+    "postinstall": "node scripts/patch-node-pty-console-list-agent.js",
     "start:trace": "node scripts/start-rebuild-trace.js",
     "eval:browser": "node test/browser-tool-evals.js",
     "acceptance:governance-e2e": "node test/browser-governance-e2e-acceptance.js",

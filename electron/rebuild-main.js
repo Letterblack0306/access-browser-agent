@@ -188,8 +188,7 @@ app.on('browser-window-created',(_event,window)=>{
   contents.on('did-finish-load',()=>record({source:'webcontents',category:'load',action:'did_finish_load',phase:'success',data:{windowId:window.id,url:contents.getURL()}}));
   contents.on('did-fail-load',(_e,errorCode,errorDescription,validatedURL,isMainFrame)=>record({source:'webcontents',category:'load',action:'did_fail_load',phase:'failed',severity:'error',data:{windowId:window.id,errorCode,errorDescription,validatedURL,isMainFrame}}));
   contents.on('render-process-gone',(_e,details)=>record({source:'webcontents',category:'process',action:'render_process_gone',phase:'failed',severity:'fatal',data:{windowId:window.id,details}}));
-  contents.on('console-message', (event, level, message, line, sourceId) => {
-    const details = typeof event === 'object' && event !== null && 'message' in event ? event : { level, message, line, sourceId };
+  contents.on('console-message', (_event, details = {}) => {
     record({
       source: 'renderer-console',
       category: 'console',
@@ -199,7 +198,7 @@ app.on('browser-window-created',(_event,window)=>{
       data: {
         level: details.level,
         message: details.message,
-        line: details.line,
+        line: details.lineNumber ?? details.line,
         sourceId: details.sourceId,
       },
     });

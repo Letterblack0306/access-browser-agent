@@ -7,6 +7,7 @@
   function create() {
     return {
       updatedAt:stamp(),
+      revision:0,
       workspace:{state:'unknown',root:null,detail:null},
       runtime:{state:'starting',active:false,detail:null},
       provider:{state:'unknown',detail:null,agentReady:false,capabilities:null,checkedAt:null},
@@ -54,8 +55,26 @@
     };
   }
 
-  function fromSnapshot(previous, snapshot = {}) {
-    const next={...previous,updatedAt:stamp()};
+  const RECONCILABLE_OPERATION_STATES=new Set(['idle','reconciled','state_unavailable']);
+  function reconcileOperationFromSnapshot(previous,next,relay,delivery){
+    const backendId=delivery.instructionId||null;
+    const currentState=previous.operation.state;
+    if(backendId&&RECONCILABLE_OPERATION_STATES.has(currentState)&&backendId!==previous.operation.instructionId){
+      next.operation={state:relay.running===true?'executing':'result_queued',instructionId:backendId,operationId:previous.operation.operationId,detail:'Reconciled from runtime snapshot.'};
+      return next;
+    }
+    const unidentifiedActivity=!backendId&&(relay.pendingResult===true||(delivery.state&&delivery.state!=='idle'));
+    if(unidentifiedActivity&&currentState==='idle'){
+      next.operation={state:'state_unavailable',instructionId:null,operationId:null,detail:'Runtime reports an unresolved browser operation; the renderer cannot reconstruct its instruction identity.'};
+      return problem(next,'operation','Browser operation state unavailable after projection reset; explicit reconciliation required.','OPERATION_STATE_UNAVAILABLE');
+    }
+    return next;
+  }
+
+  function fromSnapshot(previous, snapshot = {}, meta = {}) {
+    const incomingRevision=Number(meta&&meta.revision);
+    if(Number.isFinite(incomingRevision)&&incomingRevision<previous.revision)return previous;
+    let next={...previous,updatedAt:stamp(),revision:previous.revision+1};
     const agent=snapshot.agent||{},provider=snapshot.provider||{},relay=snapshot.browserRelay||{},delivery=relay.delivery||{};
     next.workspace={state:snapshot.workspaceRoot?'connected':'missing',root:snapshot.workspaceRoot||null,detail:snapshot.bridge?.error||null};
     next.runtime={state:snapshot.runtimeControl?.active===true?(agent.running?'running':'ready'):'stopped',active:snapshot.runtimeControl?.active===true,detail:agent.error||snapshot.bridge?.error||null};
@@ -64,21 +83,46 @@
     next.loop={state:String(relay.lifecycle||(relay.running?'waiting_for_instruction':'stopped')),running:relay.running===true,detail:relay.error||null};
     next.browserTarget={state:relay.target?(relay.running?'attached':'selected'):'unselected',target:clone(relay.target||null),targets:previous.browserTarget?.targets||[]};
     next.browserDelivery={state:String(delivery.state||(relay.pendingResult?'queued':'idle')),instructionId:delivery.instructionId||null,attempts:Number(delivery.attempts||0),maxAttempts:Number(delivery.maxAttempts||0),detail:delivery.error?.message||null,evidenceLevel:delivery.evidenceLevel||null};
+    next=reconcileOperationFromSnapshot(previous,next,relay,delivery);
     if(next.runtime.detail)return problem(next,'runtime',next.runtime.detail);
     if(next.loop.detail&&['degraded','delivery_failed','delivery_unverified','unavailable'].includes(next.loop.state))return problem(next,'loop',next.loop.detail);
     if(next.browserDelivery.state==='submitted_unverified')return problem(next,'delivery',next.browserDelivery.detail||'Result submission was accepted but rendered delivery is not verified.','RENDERED_DELIVERY_UNVERIFIED');
     return next;
   }
 
-  function withTargets(previous, targets) { return {...previous,updatedAt:stamp(),browserTarget:{...previous.browserTarget,targets:Array.isArray(targets)?targets.map(clone):[]}}; }
+  function withTargets(previous, targets) { return {...previous,updatedAt:stamp(),revision:previous.revision+1,browserTarget:{...previous.browserTarget,targets:Array.isArray(targets)?targets.map(clone):[]}}; }
 
   function withTerminal(previous, terminal = {}) {
-    return {...previous,updatedAt:stamp(),terminal:{state:terminal.ok===false?'unavailable':terminal.terminalId?'open':'closed',id:terminal.terminalId||null,fallback:terminal.fallback===true,mode:terminal.mode||null,detail:terminal.error||(terminal.fallback?'Native PTY unavailable; process fallback active.':null)}};
+    return {...previous,updatedAt:stamp(),revision:previous.revision+1,terminal:{state:terminal.ok===false?'unavailable':terminal.terminalId?'open':'closed',id:terminal.terminalId||null,fallback:terminal.fallback===true,mode:terminal.mode||null,detail:terminal.error||(terminal.fallback?'Native PTY unavailable; process fallback active.':null)}};
+  }
+
+  const CORRELATED_OPERATION_PHASES=new Set(['browser_relay.result_queued','browser_relay.result_sent','browser_relay.delivery_unverified','browser_relay.delivery_failed']);
+  const OPERATION_TERMINAL_STATES=new Set(['rendered_delivered','delivery_failed','reconciled']);
+  const OPERATION_TRANSITIONS={
+    'browser_relay.result_queued':['idle','executing'],
+    'browser_relay.result_sent':['idle','executing','result_queued','delivery_unverified'],
+    'browser_relay.delivery_unverified':['idle','executing','result_queued'],
+    'browser_relay.delivery_failed':['idle','executing','result_queued','delivery_unverified'],
+  };
+  function isOperationEventCorrelated(previous, event = {}) {
+    if(!CORRELATED_OPERATION_PHASES.has(String(event.phase||'')))return true;
+    const eventId=event.instructionId||null;
+    if(!eventId)return false;
+    const currentId=previous.operation.instructionId;
+    return !currentId||eventId===currentId;
+  }
+  function isOperationTransitionAllowed(previous, phase = '') {
+    const allowedFrom=OPERATION_TRANSITIONS[String(phase||'')];
+    if(!allowedFrom)return true;
+    if(OPERATION_TERMINAL_STATES.has(previous.operation.state))return false;
+    return allowedFrom.includes(previous.operation.state);
   }
 
   function withEvent(previous, event = {}) {
-    let next={...previous,updatedAt:stamp(),events:[{...clone(event),at:event.timestamp||stamp()},...previous.events].slice(0,200)};
+    let next={...previous,updatedAt:stamp(),revision:previous.revision+1,events:[{...clone(event),at:event.timestamp||stamp()},...previous.events].slice(0,200)};
     const phase=String(event.phase||'');
+    if(!isOperationEventCorrelated(previous,event))return next;
+    if(!isOperationTransitionAllowed(previous,phase))return next;
     if(phase==='browser_relay.instruction_received') {
       next.operation={state:'executing',instructionId:event.instructionId||null,operationId:event.operationId||event.correlation?.operationId||null,detail:event.detail||null};
     } else if(phase==='browser_relay.result_queued') {
@@ -111,8 +155,45 @@ next={...next,problems:next.problems.filter(item=>item.data?.journalKey!==event.
     return next;
   }
 
-  function clearProblems(previous) { return {...previous,updatedAt:stamp(),problems:[]}; }
+  function clearProblems(previous) { return {...previous,updatedAt:stamp(),revision:previous.revision+1,problems:[]}; }
 
-  const api=Object.freeze({create,fromSnapshot,providerProjection,withTargets,withTerminal,withEvent,clearProblems});
+  // ---- Single-writer projection boundary ---------------------------------
+  // All authoritative projection mutations must enter through apply().
+  // Reducers above remain internal transition logic; callers never invoke
+  // them directly for state ownership.
+  const MUTATION_KINDS=new Set(['snapshot','event','targets','terminal','clear_problems']);
+  function rejectMutation(previous, mutation) {
+    const record={phase:'projection.mutation_rejected',status:'rejected',kind:String((mutation&&mutation.kind)||null),detail:'Projection mutation rejected: unknown or malformed mutation at the single-writer boundary.',at:stamp()};
+    return {...previous,updatedAt:stamp(),revision:previous.revision+1,events:[record,...previous.events].slice(0,200)};
+  }
+  function apply(previous, mutation = {}) {
+    if(!mutation||typeof mutation!=='object'||!MUTATION_KINDS.has(mutation.kind))return rejectMutation(previous,mutation);
+    switch(mutation.kind){
+      case 'snapshot':
+        if(!mutation.snapshot||typeof mutation.snapshot!=='object'||Array.isArray(mutation.snapshot))return rejectMutation(previous,mutation);
+        return fromSnapshot(previous,mutation.snapshot,mutation.meta||{});
+      case 'event':{
+        const event=mutation.event;
+        if(!event||typeof event!=='object'||Array.isArray(event))return rejectMutation(previous,mutation);
+        // Local UI lifecycle notifications carry origin:'renderer-local'; they are
+        // observability-only provenance tags and still pass the exact same
+        // correlation gate, terminal guards, and revision rules as backend events.
+        const origin=typeof event.origin==='string'?event.origin:'backend';
+        return withEvent(previous,{...event,origin});
+      }
+      case 'targets':
+        if(!Array.isArray(mutation.targets))return rejectMutation(previous,mutation);
+        return withTargets(previous,mutation.targets);
+      case 'terminal':
+        if(mutation.terminal!==undefined&&(typeof mutation.terminal!=='object'||Array.isArray(mutation.terminal)))return rejectMutation(previous,mutation);
+        return withTerminal(previous,mutation.terminal||{});
+      case 'clear_problems':
+        return clearProblems(previous);
+      default:
+        return rejectMutation(previous,mutation);
+    }
+  }
+
+  const api=Object.freeze({create,fromSnapshot,providerProjection,withTargets,withTerminal,withEvent,clearProblems,apply});
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.RebuildRuntimeState=api;
 })(typeof window!=='undefined'?window:globalThis);

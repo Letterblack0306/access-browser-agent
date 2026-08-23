@@ -17,6 +17,7 @@ const { McpClient } = require('../src/system/mcp-client');
 const { ManagedChrome } = require('../src/system/managed-chrome');
 const { ProviderChannel } = require('../src/browser/provider-channel');
 const { BrowserInstructionRelay } = require('../src/agent/executive/BrowserInstructionRelay');
+const { BrowserTransportJournal } = require('../src/system/browser-transport-journal');
 const { BrowserResultStore } = require('../src/system/browser-result-store');
 const { BrowserSessionAuthority } = require('./browser-session-authority');
 const { TaskStateRouterBridge } = require('./task-state-router-bridge');
@@ -35,6 +36,7 @@ const skills = new SkillCatalog(
 
 let windowRef;
 const browserEvidenceStore = new BrowserEvidenceStore(defaultBrowserEvidenceRoot(path.join(app.getPath('userData'),'diagnostics')));
+const browserTransportJournal = new BrowserTransportJournal(path.join(app.getPath('userData'),'diagnostics','browser-transport.jsonl'));
 let bridgeServer;
 let preferences;
 let preferenceValues;
@@ -548,11 +550,17 @@ app.whenReady().then(async () => {
 
     browserRelay = new BrowserInstructionRelay({
       channel: new ProviderChannel(),
+      journal: browserTransportJournal,
       getEndpoint: () => (browserAuthority ? browserAuthority.getLiveEndpoint() : ''),
       getWorkspaceRoot: () => workspaceRoot,
       submitInstruction: input => taskStateRouterBridge.submitInstruction(input),
       storeResult: payload => new BrowserResultStore(path.join(app.getPath('userData'), 'agent-state', workspaceKey(workspaceRoot))).put(payload),
       onEvent: event => { if (windowRef && !windowRef.isDestroyed()) windowRef.webContents.send('ide:agent-event', event); },
+      // A newly started app session must not replay an instruction whose
+      // previous side-effect boundary is ambiguous. Reconcile stale records
+      // append-only as quarantined; the default relay contract remains
+      // fail-closed for callers that do not explicitly opt into this policy.
+      autoQuarantineStaleRecoveries: true,
     });
     browserAuthority = new BrowserSessionAuthority({ managedChrome, generalManagedChrome, channel:new ProviderChannel(), relay:browserRelay, evidenceStore:browserEvidenceStore });
     global.__accessAgentRetireBrowserBootstrap=(endpoint,targetId)=>browserAuthority._retireBootstrapTarget(endpoint,targetId);

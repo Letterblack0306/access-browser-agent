@@ -178,7 +178,7 @@ try{evidenceRefs=JSON.parse(String(evidence||'[]').trim()||'[]');}
 catch(error){const invalid=new Error('Evidence references must be valid JSON.');invalid.code='RECOVERY_EVIDENCE_INVALID';throw invalid;}
 }
 const result=await api.browserRecoveryReconcile({key,disposition,reason,operator:'local-operator',evidenceRefs});
-state=Projection.withEvent(state,{phase:'browser_relay.recovery_reconciled',status:'completed',journalKey:key,instructionId:result?.receipt?.instructionId||null,detail:'Recovery reconciled as '+disposition+'.',receipt:result?.receipt||null});
+state=Projection.apply(state,{kind:'event',event:{phase:'browser_relay.recovery_reconciled',status:'completed',journalKey:key,instructionId:result?.receipt?.instructionId||null,detail:'Recovery reconciled as '+disposition+'.',receipt:result?.receipt||null,origin:'renderer-local'}});
 render();
 await refreshStatus({quiet:true,force:true});
 }
@@ -342,13 +342,14 @@ await refreshStatus({quiet:true,force:true});
 
   async function refreshStatus({ quiet = false, force = false } = {}) {
     try {
+      const requestedRevision = state.revision;
       const snapshot = await api.status();
       const next = snapshot || {};
       const fingerprint = statusFingerprint(next);
       latestSnapshot = next;
       if (force || fingerprint !== latestStatusFingerprint) {
         latestStatusFingerprint = fingerprint;
-        state = Projection.fromSnapshot(state, next);
+        state = Projection.apply(state, { kind:'snapshot', snapshot:next, meta:{ revision:requestedRevision } });
         render();
       }
       return snapshot;
@@ -358,7 +359,7 @@ await refreshStatus({quiet:true,force:true});
   function recordUiProblem(source, error) {
     uiDiagnostic('operation_failed', 'failed', { source, code:error?.code || null, classification:error?.classification || 'UNKNOWN' }, error);
     const event = { phase:'ui.operation_failed', status:'failed', detail:error?.message || String(error), code:error?.code || null, timestamp:new Date().toISOString() };
-    state = Projection.withEvent(state, { ...event, source }); render(); shell.showBottom('problems');
+    state = Projection.apply(state, { kind:'event', event:{ ...event, origin:'renderer-local', source } }); render(); shell.showBottom('problems');
   }
 
   async function withBusy(button, task) {
@@ -389,7 +390,7 @@ await refreshStatus({quiet:true,force:true});
     if (terminalId) {
       try { outcomes.terminal = await api.terminalKill(terminalId); } catch (error) { outcomes.terminal = { ok:false, error:error.message }; }
       terminalId = null;
-      state = Projection.withTerminal(state, {});
+      state = Projection.apply(state, { kind:'terminal' });
     }
     await refreshStatus({ quiet:true, force:true });
     const failed = Object.entries(outcomes).filter(([,value]) => value?.ok === false);
@@ -424,7 +425,7 @@ await refreshStatus({quiet:true,force:true});
     await api.browserRelaySelect(opened.target);
     await api.browserRelayStart();
     await refreshStatus({ force:true });
-    state = Projection.withTargets(state, [opened.target]);
+    state = Projection.apply(state, { kind:'targets', targets:[opened.target] });
     render();
     uiDiagnostic(recover ? 'reset_loop' : 'start_loop', 'success', { chatUrl:parsed.toString(), endpoint, targetId:opened.target.targetId, providerId:opened.target.providerId, waitingForBrowser:true });
   }
@@ -442,9 +443,10 @@ await refreshStatus({quiet:true,force:true});
 
   async function checkTarget() {
     if (!state.browserTarget.target) throw new Error('No chat target is attached.');
+    const requestedRevision = state.revision;
     const result = await api.browserRelayCheck();
     const tabs = Array.isArray(result?.tabs) ? result.tabs : [];
-    state = Projection.fromSnapshot(state, result?.status || {});
+    state = Projection.apply(state, { kind:'snapshot', snapshot:result?.status || {}, meta:{ revision:requestedRevision } });
     const target = state.browserTarget.target;
     const current = tabs.find(item => item.targetId === target?.targetId && item.providerId === target?.providerId);
     if (!current) throw Object.assign(new Error('Selected conversation target is no longer available. Use Reset attachment.'), { code:'TARGET_UNAVAILABLE', classification:'TARGET' });
@@ -453,7 +455,7 @@ await refreshStatus({quiet:true,force:true});
       const identity = u => `${u.origin}${u.pathname.replace(/\/+$/u,'') || '/'}`;
       if (identity(expected) !== identity(observed)) throw Object.assign(new Error(`Conversation identity changed. Expected ${identity(expected)}; observed ${identity(observed)}.`), { code:'CHAT_IDENTITY_CHANGED', classification:'TARGET' });
     }
-    state = Projection.withTargets(state, [current]);
+    state = Projection.apply(state, { kind:'targets', targets:[current] });
     render(); text('statusDetail', `Target verified: ${current.title || current.url}`);
   }
 
@@ -474,7 +476,19 @@ await refreshStatus({quiet:true,force:true});
     catch (error) { recordUiProblem('editor', error); }
   }
   async function saveFile() { if (!currentFile) return; await api.write({ path:currentFile, content:$('editorText').value }); text('statusDetail', `Saved ${currentFile}`); }
-  async function refreshGit() { try { const result=await api.gitStatus(); text('gitSummary', typeof result==='string'?result:JSON.stringify(result,null,2)); } catch (error) { recordUiProblem('git',error); } }
+  function renderGitStatus(result) {
+    const host = $('gitSummary'); if (!host) return;
+    if (!result?.available) {
+      host.innerHTML = `<div class="git-empty">${escapeHtml(result?.reason || 'Git status is unavailable.')}</div>`;
+      return;
+    }
+    const changes = Array.isArray(result.changes) ? result.changes : [];
+    const commits = Array.isArray(result.commits) ? result.commits.slice(0, 8) : [];
+    const changeRows = changes.map(change => `<div class="git-row"><span class="git-state">${escapeHtml(String(change.status || '').trim() || '??')}</span><span class="git-path">${escapeHtml(change.path || '')}</span></div>`).join('') || '<div class="git-empty">Working tree clean.</div>';
+    const commitRows = commits.map(commit => `<div class="git-commit"><span class="git-sha">${escapeHtml(commit.shortSha || '')}</span><span class="git-subject">${escapeHtml(commit.subject || '')}</span><span class="git-date">${escapeHtml(commit.date || '')}</span></div>`).join('') || '<div class="git-empty">No commits found.</div>';
+    host.innerHTML = `<div class="git-meta"><div><span class="git-label">Workspace</span><span class="git-value">${escapeHtml(result.workspaceRoot || '')}</span></div><div><span class="git-label">Branch</span><span class="git-value">${escapeHtml(result.branch || 'detached')}</span></div><div><span class="git-label">HEAD</span><span class="git-value git-mono">${escapeHtml(String(result.head || '').slice(0, 12))}</span></div></div><div class="git-block"><div class="git-block-title">Changes <span>${changes.length}</span></div>${changeRows}</div><div class="git-block"><div class="git-block-title">Recent commits <span>${commits.length}</span></div>${commitRows}</div>`;
+  }
+  async function refreshGit() { try { renderGitStatus(await api.gitStatus()); } catch (error) { renderGitStatus({ available:false, reason:error?.message || 'Git status unavailable.' }); recordUiProblem('git',error); } }
 
   async function refreshExecution(sessionId = state.agentSession.sessionId) {
     if (!sessionId) { executionTraceRecords = []; renderRuntimeTruth(); return; }
@@ -492,9 +506,9 @@ await refreshStatus({quiet:true,force:true});
     terminal.open($('terminalHost')); fitAddon?.fit();
     terminal.onData(data=>{ if (terminalId) api.terminalWrite(terminalId,data).catch(error=>recordUiProblem('terminal',error)); });
     const observer=new ResizeObserver(()=>{ fitAddon?.fit(); if (terminalId) api.terminalResize(terminalId,terminal.cols,terminal.rows).catch(()=>{}); }); observer.observe($('terminalHost'));
-    api.terminalCreate().then(result=>{ terminalId=result?.terminalId||null; state=Projection.withTerminal(state,result||{}); if (result?.fallback) { text('terminalBanner',`Degraded terminal: ${result.mode||'fallback'} mode${result.error?` — ${result.error}`:''}`); $('terminalBanner').classList.add('is-visible'); } render(); }).catch(error=>recordUiProblem('terminal',error));
+    api.terminalCreate().then(result=>{ terminalId=result?.terminalId||null; state=Projection.apply(state,{kind:'terminal',terminal:result||{}}); if (result?.fallback) { text('terminalBanner',`Degraded terminal: ${result.mode||'fallback'} mode${result.error?` — ${result.error}`:''}`); $('terminalBanner').classList.add('is-visible'); } render(); }).catch(error=>recordUiProblem('terminal',error));
     api.onTerminalData(event=>{ if (event?.terminalId===terminalId) terminal.write(String(event.data||'')); });
-    api.onTerminalExit(event=>{ if (event?.terminalId!==terminalId) return; terminal.write(`\r\n[process exited ${event.exitCode??''}]\r\n`); terminalId=null; state=Projection.withTerminal(state,{}); render(); });
+    api.onTerminalExit(event=>{ if (event?.terminalId!==terminalId) return; terminal.write(`\r\n[process exited ${event.exitCode??''}]\r\n`); terminalId=null; state=Projection.apply(state,{kind:'terminal'}); render(); });
   }
 
   function bindUiDiagnostics() {
@@ -524,14 +538,14 @@ await refreshStatus({quiet:true,force:true});
     $('refreshFiles').addEventListener('click',refreshFiles); $('fileSearch').addEventListener('input',refreshFiles);
     $('saveFile').addEventListener('click',()=>saveFile().catch(error=>recordUiProblem('editor',error))); $('refreshGit').addEventListener('click',refreshGit);
     $('refreshTrace').addEventListener('click',()=>refreshExecution()); $('refreshValidation').addEventListener('click',async()=>{const snapshot=await refreshStatus({ force:true });text('validationOutput',JSON.stringify(snapshot,null,2));});
-    $('clearProblems').addEventListener('click',()=>{state=Projection.clearProblems(state);render();});
+    $('clearProblems').addEventListener('click',()=>{state=Projection.apply(state,{kind:'clear_problems'});render();});
  problemList?.addEventListener('click',event=>{const button=event.target?.closest?.('[data-recovery-action]');if(button)reconcileRecoveryAction(button).catch(error=>recordUiProblem('recovery',error));});
     $('refreshDiagnostics').addEventListener('click',()=>refreshDiagnostics().catch(error=>recordUiProblem('diagnostics',error)));
     $('diagnosticFilter').addEventListener('change',renderDiagnostics);
     $('openDiagnosticFolder').addEventListener('click',()=>api.diagnosticReveal().catch(error=>recordUiProblem('diagnostics',error)));
     $('toggleMcp').addEventListener('click',async()=>{try{const current=await api.mcpStatus();const result=await api.setMcpEnabled(current?.enabled!==true);text('mcpDetail',`${result.status||'unknown'}${result.error?` — ${result.error}`:''}`);}catch(error){recordUiProblem('mcp',error);}});
-    api.onAgentEvent(event=>{state=Projection.withEvent(state,event||{});render();if(['browser_relay.delivery_failed','browser_relay.instruction_recovery_required'].includes(event?.phase))shell.showBottom('problems');});
-    api.onAgentState(event=>{state=Projection.withEvent(state,{phase:'agent.state',...event});refreshStatus({quiet:true,force:true});});
+    api.onAgentEvent(event=>{state=Projection.apply(state,{kind:'event',event:event||{}});render();if(['browser_relay.delivery_failed','browser_relay.instruction_recovery_required'].includes(event?.phase))shell.showBottom('problems');});
+    api.onAgentState(event=>{state=Projection.apply(state,{kind:'event',event:{phase:'agent.state',...event}});refreshStatus({quiet:true,force:true});});
     api.onDiagnosticRecord?.(record=>{ diagnosticRecords.push(record); if(diagnosticRecords.length>5000) diagnosticRecords=diagnosticRecords.slice(-5000); renderDiagnostics(); renderRuntimeTruth(); renderLiveSessionStream(); });
   }
 

@@ -36,6 +36,7 @@ for (const historical of [
 for (const requiredId of [
   'workspacePath','conversation','chatUrl','loopStart','recoverLoop','checkTarget','deliveryState','terminalHost',
   'diagnosticList','diagnosticFilter','openDiagnosticFolder','eventList','problemList','validationOutput',
+  'gitSummary','refreshGit',
   'clineLogin','clineModel','lmBaseUrl','browserProfilePath','toggleMcp','runtimeRestart','stopAll','resetLayout','resetActions',
 ]) assert.match(html, new RegExp(`id="${requiredId}"`, 'u'), `missing fresh workbench control ${requiredId}`);
 assert.doesNotMatch(html,/id="runtimeToggle"|id="runtimeStart"|id="runtimeStop"|id="loopStop"/u,'duplicate lifecycle controls must not be visible');
@@ -48,10 +49,7 @@ assert.match(html,/Recovery actions are available from the top-bar Reset menu/u)
 assert.match(html,/Browser-owned agent session/u);
 assert.match(html,/Waiting for browser work/u);
 assert.match(html,/No port or tab selection is required/u);
-assert.match(html,/class="composer" hidden aria-hidden="true"/u,'legacy composer shell must remain hidden and disabled while layout compatibility is retained');
-assert.match(html,/id="runTask"[^>]*disabled/u);
-assert.match(html,/id="taskInput"[^>]*disabled/u);
-assert.match(html,/aria-label="Manual target selection disabled"/u,'manual target compatibility shell must be hidden/disabled');
+assert.doesNotMatch(html,/class="composer" hidden aria-hidden="true"|class="task-input"|id="runTask"|id="stopTask"|id="taskInput"|id="browserStart"|id="refreshTargets"|id="targetSelect"|id="selectTarget"|Manual target selection disabled/u,'no dead-UI legacy shells may remain in the workbench; every visible control must be wired and reachable');
 assert.doesNotMatch(html,/authorization required|awaiting authorization|>approve<|>deny</iu,'active UI must not contain approval/authorization workflow');
 
 for (const token of ['#0b0b0c','#141416','#1c1c1f','#2a2a2d','#e1e1e6','#8e8e93','#ff3b3b']) assert.ok(css.includes(token), `Industrial Dark token ${token} must remain explicit`);
@@ -86,7 +84,9 @@ assert.match(resetActions,/['"]stop-all['"]\s*:\s*['"]stopAll['"]/u);
 assert.match(resetActions,/target\.click\(\)/u,'Reset dropdown must delegate to existing lifecycle owners');
 assert.doesNotMatch(resetActions,/runtimeStop|browserStop|browserRelayStop|savePreferences/u,'Reset dropdown dispatcher must not duplicate lifecycle or settings logic');
 
-assert.match(renderer,/Projection\.fromSnapshot/u);
+// Step 5 single-writer boundary: all projection mutations must go through apply().
+assert.match(renderer,/Projection\.apply\(state/u);
+assert.doesNotMatch(renderer,/Projection\.(withEvent|fromSnapshot|withTargets|withTerminal|clearProblems)\(/u,'renderer must not mutate projection state outside the apply() single-writer boundary');
 assert.match(renderer,/ensureRuntimeActive/u);
 assert.match(renderer,/trigger:'browser_loop_start'/u);
 assert.match(renderer,/toggleLoop/u);
@@ -113,6 +113,9 @@ assert.match(renderer,/All Access-owned runtime, loop, browser, and terminal res
 assert.match(renderer,/\$\('recoverLoop'\)\.disabled = !\$\('chatUrl'\)\?\.value\.trim\(\)/u);
 assert.doesNotMatch(renderer,/Start the runtime before starting the browser loop|Runtime is stopped\. Start it before running a task/u,'Browser Start must demand-start runtime instead of instructing a preparatory click');
 assert.match(bootSource,/Promise\.allSettled\(\[refreshFiles\(\),refreshGit\(\),refreshDiagnostics\(\)\]\)/u);
+assert.match(renderer,/function renderGitStatus\(result\)/u);
+assert.match(renderer,/git-block-title/u);
+assert.doesNotMatch(renderer,/gitSummary.*JSON\.stringify\(result,null,2\)/u,'Git status must render as structured UI rather than raw JSON');
 assert.ok(!bootSource.includes('browserProviderTabs('),'renderer boot must not enumerate browser targets');
 assert.ok(!bootSource.includes('browserStart('),'renderer boot must not start managed Chrome');
 assert.match(preload,/browserRelayStart:\s*\(\)\s*=>\s*invoke\('ide:browser-relay-start'\)/u,'preload must transport relay start to the authority owner');

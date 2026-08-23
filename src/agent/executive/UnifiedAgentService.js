@@ -120,7 +120,7 @@ class UnifiedAgentService {
     return this.runtime.stop(id, reason || 'Stopped by user.');
   }
 
-  resetForFreshRuntime() { return this.runtime.resetForFreshRuntime(); }
+  resetForFreshRuntime() { return this.runtime.resetForFreshRuntime({ clearCurrentSession:true }); }
 
   async status(sessionId) {
     const state = await this.runtime.status(sessionId || null);

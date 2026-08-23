@@ -1,3 +1,7 @@
+// CRITICAL_TRIAGE: see docs/change-intents/2026-08-23-orphan-triage.md
+// This file is flagged for behavior verification before any keep/wire/delete decision.
+// Do not delete or change behavior without first recording a check result in the triage doc.
+
 'use strict';
 
 const assert = require('node:assert/strict');
