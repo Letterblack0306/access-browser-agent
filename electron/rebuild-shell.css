@@ -378,5 +378,4 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .reasoning-arrow{font-size:10px;color:#6b7280;}
 
 
-#runtimeDetail, #providerDetail, dt:has(+ #runtimeDetail), dt:has(+ #providerDetail) { display: none; }
-dt:has(+ #loopDetail), #loopDetail { display: none; }
+

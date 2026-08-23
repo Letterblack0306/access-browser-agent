@@ -3,7 +3,7 @@
 > Generated from `src/system/module-registry.js` by `npm run module:tree`.
 > Ownership/maintenance registry only. It must never become an agent semantic state machine.
 
-Registered ownership modules: 25.
+Registered ownership modules: 26.
 
 ## Active execution tree
 
@@ -15,6 +15,7 @@ electron/rebuild-main.js [electron-main-authority]
   └─   └─   └─   └─ electron/rebuild-runtime-state.js [runtime-view-projection]
   └─   └─   └─   └─ electron/rebuild-settings.js [provider-settings-ui]
   └─   └─   └─   └─ electron/rebuild-diagnostic-enhancer.js [diagnostic-ui-enhancer]
+  └─   └─   └─ electron/rebuild-ide-reference.js [ide-rail-delegate]
   └─   └─ electron/rebuild-renderer.js [workbench-controller]
   └─   └─   └─ electron/rebuild-runtime-state.js [runtime-view-projection]
   └─   └─   └─ electron/rebuild-settings.js [provider-settings-ui]
@@ -116,6 +117,14 @@ electron/rebuild-main.js [electron-main-authority]
 - Success: Maintenance drift appears as Caution/Maintained without gating runtime, browser, tools, or reasoning.
 - Failure: Status lookup failure appears as caution text only and never changes execution authority.
 - Parents: `electron/rebuild-renderer.js`
+
+### `electron/rebuild-ide-reference.js`
+
+- Owner: `ide-rail-delegate`
+- Behavior: Wire the 6 workbench activity-rail glyph buttons (data-ide-target) to their corresponding center/right tab clicks (data-center-tab, data-right-tab) and mirror is-active/aria-pressed state.
+- Success: Every glyph click switches the visible center or right tab panel to the bound view (Files, Agent, Execution, Editor, Browser loop, Runtime, Settings) and updates the rail visual state; tab clicks in the center/right update the rail in turn.
+- Failure: Missing rail markup, missing target tab, or duplicate event handlers fall through without invoking runtime, browser, or provider owners.
+- Parents: `electron/rebuild-shell.js`
 
 ### `electron/rebuild-main.js`
 
