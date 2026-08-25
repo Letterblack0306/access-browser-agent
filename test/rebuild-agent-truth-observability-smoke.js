@@ -126,7 +126,7 @@ const {BrowserTransportJournal}=require('../src/system/browser-transport-journal
   const renderer=fs.readFileSync(path.join(__dirname,'..','electron','rebuild-renderer.js'),'utf8');
   const stabilityCss=fs.readFileSync(path.join(__dirname,'..','electron','rebuild-ui-stability.css'),'utf8');
   assert.match(adapter,/PROVIDER_CAPABILITY_UNVERIFIED/u);assert.match(adapter,/diagnostic_probe/u);
-  assert.match(adapter,/if \(input\.discoverOnly === true\)/u);assert.match(adapter,/contactState:'not_checked'/u);
+  assert.match(adapter,/if \(input\.discoverOnly === true\)/u);assert.match(adapter,/contactState:listError \? 'failed' : 'checked'/u);
   assert.doesNotMatch(adapter,/const health=await provider\.checkHealth\(\)/u);
   assert.match(adapter,/readinessAttempt=await this\.providerReadiness\(\)/u);
   assert.doesNotMatch(settings,/configured\?\.provider\?\.healthy/u);

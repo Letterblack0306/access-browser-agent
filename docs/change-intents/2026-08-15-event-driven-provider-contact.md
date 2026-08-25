@@ -73,3 +73,12 @@ Remote implementation is complete and remains `in_progress` only because isolate
 Remote source re-open confirmed the new control flow: passive configuration returns `contactState: not_checked`; discovery is isolated under `discoverOnly`; agent execution calls readiness on demand; settings no longer gate Test/Use on `configured.provider.healthy`.
 
 `test/rebuild-agent-truth-observability-smoke.js` now asserts those source contracts. This is not runtime proof. Required closure evidence is an isolated Windows `npm run check` followed by `start:trace` proving idle boot is silent, one offline Discover click produces one discovery failure, and a later provider-dependent action is allowed one new bounded attempt without background retries between actions.
+
+## Superseding decision (2026-08-25): eager discovery retained
+
+Operator arbitration between two competing implementations resolved in favor of commit `e5dbdf1`: the `discoverOnly: true` path performs its one bounded model-discovery request immediately on that explicit click and returns fully resolved health fields (`contactState: listError ? 'failed' : 'checked'`, plus `reachable`, `healthy`, `failureReason`, `modelCount`) instead of a passive `not_checked` placeholder.
+
+- The passive `contactState: 'not_checked'` return value is retired from the `discoverOnly` default path.
+- The event-driven rules that remain in force: no heartbeat/retry/polling loops, no background reconnect, one bounded attempt per explicit action, no redundant health gate before readiness.
+- `test/rebuild-agent-truth-observability-smoke.js` now asserts `contactState:listError ? 'failed' : 'checked'` in place of the retired `not_checked` assertion.
+- Known residual gap outside this decision: the non-discover-only configuration path (invoked at boot via `createConfiguredAgentRuntime()`) still performs model listing, which predates this change intent and remains tracked separately.
