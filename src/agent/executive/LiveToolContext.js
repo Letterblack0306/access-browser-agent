@@ -152,6 +152,7 @@ function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, term
       observation:'WAITING_FOR_USER',
       question,
       message:'Question surfaced to the user; continue only after an answer arrives.',
+      waiting:{ kind:'user', question },
     };
   }
 

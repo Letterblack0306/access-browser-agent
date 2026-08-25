@@ -93,7 +93,7 @@ function resultEnvelope({instructionId,result,record=null}={}) {
   const summary=String(result?.summary || result?.text || result?.error || '').trim().slice(0,1800);
   const evidence=Array.isArray(result?.evidence) ? result.evidence : [];
   const complete=result?.ok === true && terminal === 'completed' && Boolean(summary || evidence.length);
-  const status=terminal === 'completed' ? (complete ? 'COMPLETE' : 'FAILED') : terminal === 'waiting_for_input' || terminal === 'waiting_for_dependency' ? 'WAITING' : terminal === 'blocked' ? 'BLOCKED' : terminal === 'timed_out' ? 'TIMED_OUT' : terminal === 'stopped' ? 'STOPPED' : terminal === 'cancelled' ? 'CANCELLED' : 'FAILED';
+  const status=terminal === 'completed' ? (complete ? 'COMPLETE' : 'FAILED') : terminal === 'waiting_for_input' || terminal === 'waiting_for_user' || terminal === 'waiting_for_dependency' ? 'WAITING' : terminal === 'blocked' ? 'BLOCKED' : terminal === 'timed_out' ? 'TIMED_OUT' : terminal === 'stopped' ? 'STOPPED' : terminal === 'cancelled' ? 'CANCELLED' : 'FAILED';
   const report=summary || 'Runtime returned no summary or runtime evidence; completion was rejected.';
   const compactEvidence=evidence.slice(0,8).map(item=>`- ${String(typeof item === 'string' ? item : JSON.stringify(item)).slice(0,280)}`);
   const nextState=String(result?.terminalState || (complete ? 'waiting_for_browser' : 'failed'));
@@ -417,6 +417,12 @@ else throw this._recoveryError(existing,this.target,record);
         }
       }catch(error){this.journal.markFailed(journalInput,{error:{code:error?.code||null,message:error?.message||String(error)}});throw error;}
       if(generation!==this.generation||!this.running||this.activeTarget?.targetId!==target.targetId)return;
+      const suspendedState=String(result?.terminalState||'').toLowerCase();
+      if(['waiting_for_user','waiting_for_input','waiting_for_dependency'].includes(suspendedState)){
+        this.lifecycle='waiting_for_instruction';this.error=null;this.delivery=this._blankDelivery();
+        this._event('browser_relay.suspended',{status:'waiting',instructionId:instruction.instructionId,targetId:target.targetId,providerId:target.providerId,suspendedState,detail:result?.question||result?.summary||'Awaiting subsequent user input before a terminal result is queued.'});
+        return;
+      }
       const correlation={instructionId:instruction.instructionId,sessionId:result?.sessionId||null,targetId:target.targetId,providerId:target.providerId,endpoint,createdAt:nowIso()};
       const record=this.storeResult?await this.storeResult({instruction,result,correlation,createdAt:correlation.createdAt}):null;
       const payload=instruction.type==='quick_command'?quickCommandResultEnvelope({instructionId:instruction.instructionId,result:result.quickCommand||{},record}):resultEnvelope({instructionId:instruction.instructionId,result,record});

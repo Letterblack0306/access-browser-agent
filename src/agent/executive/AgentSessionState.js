@@ -4,6 +4,7 @@ const ACTIVE_STATUSES = new Set([
   'running',
   'retrying',
   'waiting_for_input',
+  'waiting_for_user',
   'waiting_for_dependency',
 ]);
 
@@ -153,6 +154,12 @@ function reduceSessionEvent(previous, event) {
     case 'input.waiting':
       state.status = 'waiting_for_input';
       state.waiting = { kind: 'input', reason: String(data.reason || '') };
+      break;
+    case 'user.waiting':
+      state.status = 'waiting_for_user';
+      state.activeStepId = null;
+      state.activeAction = null;
+      state.waiting = { kind: 'user', question: String(data.question || ''), reason: String(data.reason || '') };
       break;
     case 'approval.pending':
       state.status = 'waiting_for_input';

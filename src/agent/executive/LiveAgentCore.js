@@ -297,6 +297,18 @@ class LiveAgentCore {
               };
             }
 
+            const waiting = result?.output?.waiting;
+            if (waiting && waiting.kind === 'user') {
+              await emitAgentEvent('runtime.waiting_for_user', { toolName:String(call.name || ''), question:String(waiting.question || ''), observation:'WAITING_FOR_USER' });
+              return {
+                status:'waiting_for_user',
+                question:String(waiting.question || ''),
+                reason:String(waiting.question || 'Awaiting user input before continuing.'),
+                summary:'WAITING FOR USER: '+String(waiting.question || 'Awaiting user input before continuing.'),
+                evidence:runtimeEvidence,
+                consumeInstructions:false,
+              };
+            }
             const fingerprint = observationFingerprint(call.name, call.arguments, output);
             if (fingerprint === lastObservationFingerprint) {
               duplicateObservationCount += 1;

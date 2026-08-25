@@ -211,6 +211,7 @@ class AgentExecutive {
         break;
       }
       if (decision.status === 'waiting_for_input') { await this._append('input.waiting', { reason: decision.reason }); break; }
+      if (decision.status === 'waiting_for_user') { await this._append('user.waiting', { question: decision.question || decision.summary || decision.reason, reason: decision.reason || 'Awaiting user input before continuing.' }); break; }
       if (decision.status === 'approval') { await this._append('approval.pending', { approvalId: decision.approvalId, action: decision.action, reason: decision.reason }); break; }
       if (decision.status === 'waiting_for_dependency') { await this._append('dependency.waiting', { dependency: decision.dependency, reason: decision.reason, retryAt: decision.retryAt }); break; }
       if (decision.status === 'stopped') { await this._append('session.stopped', { reason: decision.reason || 'Agent chose to stop.' }); await this._checkpoint('stopped'); break; }
@@ -276,7 +277,7 @@ class AgentExecutive {
 
 function normalizeStepResult(value) {
   const result = value && typeof value === 'object' ? value : {};
-  return { status: String(result.status || 'continue'), continue: result.continue === true, consumeInstructions: result.consumeInstructions !== false, decision: result.decision ? String(result.decision) : '', reason: result.reason ? String(result.reason) : '', dependency: result.dependency ? String(result.dependency) : '', retryAt: result.retryAt || null, summary: result.summary ? String(result.summary) : '', evidence: Array.isArray(result.evidence) ? result.evidence : [], approvalId: result.approvalId ? String(result.approvalId) : '', action: result.action || null };
+  return { status: String(result.status || 'continue'), continue: result.continue === true, consumeInstructions: result.consumeInstructions !== false, decision: result.decision ? String(result.decision) : '', reason: result.reason ? String(result.reason) : '', dependency: result.dependency ? String(result.dependency) : '', retryAt: result.retryAt || null, summary: result.summary ? String(result.summary) : '', evidence: Array.isArray(result.evidence) ? result.evidence : [], question: result.question ? String(result.question) : '', approvalId: result.approvalId ? String(result.approvalId) : '', action: result.action || null };
 }
 function isRetryableError(error) { return Boolean(error && (error.retryable === true || error.code === 'ECONNRESET' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.code === 'EPIPE')); }
 function isRunTimeoutError(error) { return error?.code === 'AGENT_RUN_TIMEOUT'; }

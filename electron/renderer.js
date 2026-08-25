@@ -381,6 +381,7 @@ function describeAgentProgress() {
   if (runtimeStatus === 'completed') return 'Objective completed';
   if (runtimeStatus === 'waiting_for_input') return 'Waiting for the next browser instruction';
   if (runtimeStatus === 'waiting_for_dependency') return agentRuntimeState?.waiting?.reason || 'Waiting on a dependency';
+  if (runtimeStatus === 'waiting_for_user') return agentRuntimeState?.waiting?.question || 'Waiting for the user\u2019s answer';
   if (runtimeStatus === 'stopped' || runtimeStatus === 'cancelled') return 'Agent stopped';
   const last = agentEvents.at(-1);
   if (!last) return 'Waiting for a browser instruction';
