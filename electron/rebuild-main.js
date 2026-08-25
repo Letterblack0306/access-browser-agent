@@ -49,19 +49,6 @@ clineAuthSession.load().then(() => {
   console.error('[Auth] Load failed:', err);
 });
 
-// Expose auth via IPC
-ipcMain.handle('auth:status', async () => {
-  return clineAuthSession.status();
-});
-
-ipcMain.handle('auth:login', async () => {
-  return await clineAuthSession.login();
-});
-
-ipcMain.handle('auth:logout', async () => {
-  return await clineAuthSession.logout();
-});
-
 // Store globally for other modules
 global.__accessAgentAuthSession = clineAuthSession;
 
