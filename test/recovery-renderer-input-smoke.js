@@ -30,7 +30,7 @@ function makeHarness(inputs) {
         return { receipt:{ instructionId:'turn-test' } };
       },
     },
-    Projection: { withEvent: value => value },
+    Projection: { apply: (state) => state, withEvent: value => value },
     state: {},
     render: () => {},
     refreshStatus: async () => {},
@@ -81,3 +81,4 @@ function makeHarness(inputs) {
   console.error(error);
   process.exitCode = 1;
 });
+

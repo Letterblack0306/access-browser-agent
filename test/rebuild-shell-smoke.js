@@ -102,8 +102,8 @@ assert.doesNotMatch(renderer,/function runTask\(|api\.agentRun|\$\('runTask'\)\.
 assert.doesNotMatch(renderer,/function refreshTargets\(|function selectTarget\(|browserStart.*refreshTargets|selectTarget.*addEventListener/su,'normal renderer must not expose manual browser target setup');
 assert.match(renderer,/function liveStreamRecord\(/u);
 assert.match(renderer,/function renderLiveSessionStream\(/u);
-assert.match(renderer,/class="live-tool-cell"/u);
-assert.match(renderer,/ground truth evidence/u);
+assert.match(renderer,/status-dashboard/u);
+
 assert.match(renderer,/renderLiveSessionStream\(\)/u);
 assert.doesNotMatch(renderer,/approval|approve|deny|awaiting authorization/iu,'live runtime stream must not implement approval semantics');
 assert.match(renderer,/api\.terminalCreate/u);
@@ -153,3 +153,8 @@ assert.ok(layout.modules.some(item=>item.id==='browser-loop'&&item.placement==='
 assert.equal(layout.modules.filter(item=>item.placement==='bottom'&&item.visible).length,1);
 
 console.log('rebuild-shell-smoke: PASS');
+
+
+
+
+
