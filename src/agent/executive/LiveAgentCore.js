@@ -145,6 +145,10 @@ class LiveAgentCore {
     let lastObservationFingerprint = null;
     let duplicateObservationCount = 0;
     let transientRuntimeNotice = null;
+    // Rolling window of recent observation fingerprints so stagnation catches
+    // oscillation (A,B,A,B repeats) in addition to consecutive duplicate calls.
+    const noProgressWindow = 4;
+    const noProgressHistory = [];
     const runtimeEvidence = [];
 
     try {
@@ -310,30 +314,36 @@ class LiveAgentCore {
               };
             }
             const fingerprint = observationFingerprint(call.name, call.arguments, output);
-            if (fingerprint === lastObservationFingerprint) {
+            const consecutive = fingerprint === lastObservationFingerprint;
+            if (consecutive) {
               duplicateObservationCount += 1;
-              const reconciliation = {
+            } else {
+              duplicateObservationCount = 0;
+              lastObservationFingerprint = fingerprint;
+            }
+            const oscillation = !consecutive && noProgressHistory.length >= 2 && noProgressHistory.includes(fingerprint);
+            if (noProgressHistory.length === 0 || noProgressHistory[noProgressHistory.length - 1] !== fingerprint) noProgressHistory.push(fingerprint);
+            if (noProgressHistory.length > noProgressWindow) noProgressHistory.shift();
+            const stalled = consecutive ? duplicateObservationCount >= 2 : oscillation;
+            if (stalled || consecutive || oscillation) {
+              await emitAgentEvent('runtime.no_progress', {
                 toolName:String(call.name || ''),
                 duplicateCount:duplicateObservationCount,
                 observationHash:fingerprint,
-                status:duplicateObservationCount >= 2 ? 'stagnation' : 'no_state_change',
-              };
-              await emitAgentEvent('runtime.no_progress', reconciliation);
-              if (duplicateObservationCount >= 2) {
-                return {
-                  status:'blocked',
-                  blocker:'no_progress_stagnation',
-                  reason:`The same tool observation repeated ${duplicateObservationCount} consecutive times without material state change. Runtime reconciliation stopped the loop before another provider completion.`,
-                  summary:'BLOCKED: repeated identical observations produced no material progress.',
-                  evidence:runtimeEvidence,
-                  consumeInstructions:false,
-                };
-              }
-              transientRuntimeNotice = NO_PROGRESS_NOTICE;
-            } else {
-              lastObservationFingerprint = fingerprint;
-              duplicateObservationCount = 0;
+                status:stalled ? 'stagnation' : 'no_state_change',
+              });
             }
+            if (stalled) {
+              return {
+                status:'blocked',
+                blocker:'no_progress_stagnation',
+                reason:`The reasoning loop produced ${consecutive ? duplicateObservationCount + ' consecutive identical observations' : 'an oscillating observation window (periodic repeat pattern)'} without material state change. Runtime reconciliation stopped the loop before another provider completion.`,
+                summary:'BLOCKED: repeated or oscillating identical observations produced no material progress.',
+                evidence:runtimeEvidence,
+                consumeInstructions:false,
+              };
+            }
+            if (consecutive || oscillation) transientRuntimeNotice = NO_PROGRESS_NOTICE;
           }
         }
       }

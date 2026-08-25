@@ -9,8 +9,7 @@ const crypto = require('node:crypto');
 // ---------------------------------------------------------------------------
 
 const BLOCKED_PATTERNS = [
-  /\b(blocked|blocking|cannot proceed|missing|required before|need.*before|waiting on)\b/i,
-  /\b(error|failed|failure|not found|undefined|crash)\b/i,
+  /\b(blocked|blocking|cannot (proceed|continue)|required before|need.*before|waiting on|awaiting (input|answer|decision))\b/i,
 ];
 
 const DECISION_PATTERNS = [
@@ -124,14 +123,17 @@ class TaskStateController {
     };
 
     let kind;
-    if (flags.hasBlocker) {
-      kind = 'blocked';
-    } else if (flags.hasDecision && !flags.hasTaskComplete && !flags.hasLevelComplete) {
-      kind = 'needs_decision';
-    } else if (flags.hasTaskComplete) {
+    if (flags.hasTaskComplete) {
+      // An explicit completion must win over an incidental status word; a
+      // replied "all done" is not a blocker just because it also says "error"
+      // or "failed" while describing prior work.
       kind = 'task_complete';
     } else if (flags.hasLevelComplete) {
       kind = 'level_complete';
+    } else if (flags.hasBlocker) {
+      kind = 'blocked';
+    } else if (flags.hasDecision && !flags.hasTaskComplete && !flags.hasLevelComplete) {
+      kind = 'needs_decision';
     } else if (flags.hasActionable) {
       kind = 'actionable';
     } else if (reply.trim().length > 0) {

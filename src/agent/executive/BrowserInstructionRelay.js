@@ -136,6 +136,16 @@ function nowIso(){return new Date().toISOString();}
 function hash(value){return createHash('sha256').update(String(value || '')).digest('hex');}
 function deliveryError(error){return{code:String(error?.code||error?.cause?.code||'DELIVERY_FAILED'),message:error?.message||String(error)};}
 function isTransientTransportError(error){return RETRYABLE_TRANSPORT_CODES.has(String(error?.cause?.code||error?.code||'').toUpperCase());}
+// Non-side-effecting execution faults: the transport could not reach the
+// provider (nothing delivered) or the provider itself timed out/errored before
+// returning a result. These degrade per-instruction (the session keeps running)
+// rather than halting the whole relay. True ambiguous-boundary faults (a result
+// may have entered the conversation) are intentionally NOT in this set and keep
+// the operator-gated recovery path.
+function isTransientExecutionFault(error){
+  const code=String(error?.code||error?.cause?.code||'').toUpperCase();
+  return RETRYABLE_TRANSPORT_CODES.has(code)||code==='PROVIDER_TIMEOUT'||code==='INSTRUCTION_EXECUTION_TIMEOUT';
+}
 function isSafeConsumedBaseline(record){
   return record?.state==='consumed' && ['delivery_response','first_start_historical_baseline','known_historical_baseline'].includes(String(record?.disposition||''));
 }
@@ -176,7 +186,7 @@ class MemoryJournal {
 class BrowserInstructionRelay {
   constructor({
     channel,getEndpoint,getWorkspaceRoot,submitInstruction,executeQuickCommand,storeResult,onEvent,journal,
-    pollIntervalMs=1500,deliveryRetryMs=750,deliveryMaxAttempts=5,deliveryMaxElapsedMs=30000,
+    pollIntervalMs=1500,deliveryRetryMs=750,deliveryMaxAttempts=5,deliveryMaxElapsedMs=30000,instructionMaxMs=0,
   }={}) {
     if(!channel||typeof channel.snapshot!=='function'||typeof channel.send!=='function')throw new Error('Browser relay requires a provider channel.');
     if(typeof getEndpoint!=='function'||typeof submitInstruction!=='function')throw new Error('Browser relay requires endpoint and instruction handlers.');
@@ -185,7 +195,7 @@ class BrowserInstructionRelay {
     this.storeResult=typeof storeResult==='function'?storeResult:null;this.onEvent=typeof onEvent==='function'?onEvent:()=>{};
     this.journal=journal||new MemoryJournal();
     this.pollIntervalMs=Math.min(2000,Math.max(1500,Number(pollIntervalMs)||1500));
-    this.deliveryRetryMs=Math.max(100,Number(deliveryRetryMs)||750);this.deliveryMaxAttempts=Math.max(1,Number(deliveryMaxAttempts)||5);this.deliveryMaxElapsedMs=Math.max(1000,Number(deliveryMaxElapsedMs)||30000);
+    this.deliveryRetryMs=Math.max(100,Number(deliveryRetryMs)||750);this.deliveryMaxAttempts=Math.max(1,Number(deliveryMaxAttempts)||5);this.deliveryMaxElapsedMs=Math.max(1000,Number(deliveryMaxElapsedMs)||30000);this.instructionMaxMs=Math.max(0,Number(instructionMaxMs)||0);
     this.target=null;this.activeTarget=null;this.running=false;this.lifecycle='stopped';this.checking=false;this.generation=0;this.lastHash='';this.pending=null;this.timer=null;this.error=null;this.delivery=this._blankDelivery();this.loopScope=null;
   }
 
@@ -407,15 +417,34 @@ else throw this._recoveryError(existing,this.target,record);
       }
       this.journal.observe(journalInput);this.journal.markExecuting(journalInput,{type:instruction.type});this.lastHash=digest;this.journal.markLoopProgress?.(this.loopScope,{lastInstructionHash:digest,lastInstructionId:instruction.instructionId});this.lifecycle='executing';this._event('browser_relay.instruction_received',{status:'running',instructionId:instruction.instructionId,targetId:target.targetId,providerId:target.providerId,instructionType:instruction.type,detail:(instruction.type==='quick_command'?instruction.command:instruction.objective).slice(0,240)});
       let result;
-      try{
+      let executionTimedOut=false;
+      const executeStep=async()=>{
         if(instruction.type==='quick_command'){
           if(!this.executeQuickCommand){const error=new Error('Governed quick-command executor is unavailable.');error.code='QUICK_COMMAND_UNAVAILABLE';throw error;}
           const commandResult=await this.executeQuickCommand({command:instruction.command,workspaceRoot:this.getWorkspaceRoot(),instructionId:instruction.instructionId,target});
-          result={ok:commandResult?.ok===true,terminalState:commandResult?.ok===true?'completed':'failed',summary:commandResult?.ok===true?`Command completed with exit code ${commandResult.exitCode}.`:commandResult?.error||'Command failed.',evidence:[{type:'terminal_receipt',receiptId:commandResult?.receipt?.id||commandResult?.receipt?.hash||null,exitCode:commandResult?.exitCode,stdoutLength:String(commandResult?.stdout||'').length,stderrLength:String(commandResult?.stderr||'').length}],quickCommand:commandResult};
-        }else{
-          result=await this.submitInstruction({inbound:'assistant_turn',instructionId:instruction.instructionId,instruction:instruction.objective,objective:instruction.objective,source:'browser-provider',newSession:false,browser:{targetId:target.targetId,providerId:target.providerId,endpoint,url:this._conversationId(target),provenance:snapshot.provenance||null}});
+          return {ok:commandResult?.ok===true,terminalState:commandResult?.ok===true?'completed':'failed',summary:commandResult?.ok===true?`Command completed with exit code ${commandResult.exitCode}.`:commandResult?.error||'Command failed.',evidence:[{type:'terminal_receipt',receiptId:commandResult?.receipt?.id||commandResult?.receipt?.hash||null,exitCode:commandResult?.exitCode,stdoutLength:String(commandResult?.stdout||'').length,stderrLength:String(commandResult?.stderr||'').length}],quickCommand:commandResult};
         }
-      }catch(error){this.journal.markFailed(journalInput,{error:{code:error?.code||null,message:error?.message||String(error)}});throw error;}
+        return this.submitInstruction({inbound:'assistant_turn',instructionId:instruction.instructionId,instruction:instruction.objective,objective:instruction.objective,source:'browser-provider',newSession:false,browser:{targetId:target.targetId,providerId:target.providerId,endpoint,url:this._conversationId(target),provenance:snapshot.provenance||null}});
+      };
+      try{
+        if(this.instructionMaxMs>0){
+          result=await Promise.race([
+            executeStep(),
+            new Promise((_,reject)=>setTimeout(()=>{executionTimedOut=true;const error=new Error(`Instruction execution exceeded ${this.instructionMaxMs} ms.`);error.code='INSTRUCTION_EXECUTION_TIMEOUT';reject(error);},this.instructionMaxMs)),
+          ]);
+        }else{
+          result=await executeStep();
+        }
+      }catch(error){
+        this.journal.markFailed(journalInput,{error:{code:error?.code||null,message:error?.message||String(error)}});
+        if(executionTimedOut||isTransientExecutionFault(error)){
+          this.lifecycle='waiting_for_instruction';this.error=error?.message||String(error);this.delivery=this._blankDelivery();
+          this._event(executionTimedOut?'browser_relay.instruction_timeout':'browser_relay.instruction_failed',{status:'failed',instructionId:instruction.instructionId,targetId:target.targetId,providerId:target.providerId,code:error?.code||null,detail:error?.message||String(error),retryable:true,timeoutMs:executionTimedOut?this.instructionMaxMs:null});
+          return;
+        }
+        throw error;
+      }
+      if(executionTimedOut)return;
       if(generation!==this.generation||!this.running||this.activeTarget?.targetId!==target.targetId)return;
       const suspendedState=String(result?.terminalState||'').toLowerCase();
       if(['waiting_for_user','waiting_for_input','waiting_for_dependency'].includes(suspendedState)){
