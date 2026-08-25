@@ -105,7 +105,12 @@
       </section>
     </main>
 
-    <footer class="statusbar"><span class="status-item"><span class="dot ok"></span>Local</span><span id="statusRuntime" class="status-item"><span class="dot"></span>Runtime unknown</span><span id="statusLoop" class="status-item"><span class="dot"></span>Loop stopped</span><span id="statusTarget" class="status-item">No target</span><span class="status-spacer"></span><span id="statusDetail" class="status-detail">Initializing workbench</span></footer>
+    <footer class="statusbar"><span class="status-item"><span class="dot ok"></span>Local</span><span id="statusRuntime" class="status-item"><span class="dot"></span>Runtime unknown</span><span id="statusLoop" class="status-item"><span class="dot"></span>Loop stopped</span><span id="statusTarget" class="status-item">No target</span><span class="status-spacer"></span><span id="statusDetail" class="status-detail">Initializing workbench</span><span class="status-item status-zoom" title="UI scale">
+      <button id="uiZoomOut" type="button" aria-label="Decrease UI scale">−</button>
+      <input id="uiZoomRange" type="range" min="70" max="150" step="5" value="100" aria-label="UI scale">
+      <span id="uiZoomValue">100%</span>
+      <button id="uiZoomIn" type="button" aria-label="Increase UI scale">+</button>
+    </span></footer>
   </div>
   <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
@@ -116,5 +121,6 @@
   <script src="./rebuild-reset-actions.js"></script>
   <script src="./rebuild-settings.js"></script>
   <script src="./rebuild-diagnostic-enhancer.js"></script>
+  <script src="./rebuild-zoom.js"></script>
 </body>
 </html>

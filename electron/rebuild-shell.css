@@ -307,6 +307,35 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .status-spacer { flex: 1; }
 .status-detail { min-width: 0; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Statusbar UI-scale zoom control */
+.status-zoom { gap: 4px; margin-left: 8px; }
+.status-zoom button {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #1c1c20;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.status-zoom button:hover { background: #26262b; border-color: #414148; color: #d7e5ff; }
+.status-zoom input[type='range'] {
+  width: 72px;
+  height: 2px;
+  margin: 0;
+  accent-color: #8fc3ff;
+  cursor: pointer;
+}
+.status-zoom #uiZoomValue {
+  min-width: 30px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
