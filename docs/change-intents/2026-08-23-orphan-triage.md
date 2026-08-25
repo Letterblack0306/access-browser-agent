@@ -60,6 +60,42 @@ or non-`package.json` reference. They are NOT in the critical list above.
 
 Both deletions were executed as part of `docs/change-intents/2026-08-23-ide-rail-delegate-owner.md`. The workbench layout's `retained` allow-list at `test/electron-shell-smoke.js:38-39` excludes `project-audit` and the audit pipeline (`npm run check`) remains green.
 
+## Resolved during a later UI cleanup — 2026-08-25 (remove unused UI features)
+
+Behavior check result for the flagged historical UI shells: **DEAD-CODE — DELETE**. Each file
+below was verified unreachable from the active runtime:
+
+- NOT loaded by `electron/index.html` (the active entrypoint loads only `rebuild-*`, `rebuild-ide-reference.*`, `rebuild-reset-actions.js`, `rebuild-settings.js`, `rebuild-diagnostic-enhancer.js`, `rebuild-zoom.js`, plus the xterm assets).
+- NOT `require`d by `electron/main.js`, `electron/rebuild-main.js`, or `electron/preload.js`.
+- NOT part of the active `RUNTIME_MODULES` set asserted by `test/module-registry-smoke.js` (existence check at `module-registry-smoke.js:25`), so removing them does not break the registry.
+- Explicitly banned from the active UI by `test/rebuild-shell-smoke.js:32-34` ("historical UI must not be active").
+- Referenced only by orphaned `UNOWNED_STATIC` tests that are not in the active `check` pipeline.
+
+DELETED source files (12):
+- `electron/renderer.js`
+- `electron/shell-module-manager.js`
+- `electron/settings-module.js`
+- `electron/lm-studio-settings-bridge.js`
+- `electron/runtime-view-state.js`
+- `electron/task-state-panel.js`
+- `electron/task-state-panel.css`
+- `electron/agent-workflow-view.js`
+- `electron/agent-workflow-view.css`
+- `electron/action-feedback.js`
+- `electron/styles.css`
+- `electron/editor-enhancements.css`
+
+DELETED orphaned `UNOWNED_STATIC` tests that referenced the removed UI shells (7):
+- `test/action-feedback-smoke.js`
+- `test/lm-studio-settings-smoke.js`
+- `test/runtime-controls-ui-smoke.js`
+- `test/runtime-view-state-smoke.js`
+- `test/agent-workflow-view-patch-smoke.js`
+- `test/trace-ui-smoke.js`
+- `test/birdeye-ui-status-smoke.js` (read `electron/renderer.js`)
+
+Validation: `node --check` passes on all retained `electron/` runtime sources; `ui-asset-contract-smoke` (11 local assets), `rebuild-shell-smoke`, and `electron-shell-smoke` all PASS. The `test/rebuild-shell-smoke.js:32-34` historical-banish strings remain valid (they assert `!html.includes(...)` against the deleted filenames). `test/lm-studio-provider-hardening-smoke.js` remains present, is byte-identical to HEAD, and is not in the active `check` chain — its pre-existing `assert.equal(resFull.provider.healthy, false)` failure is unrelated to this removal.
+
 ## Workflow
 
 When a behavior check is performed on a flagged file, update this doc with:
