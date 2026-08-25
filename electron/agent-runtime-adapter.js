@@ -153,22 +153,32 @@ class AgentRuntimeAdapter {
 
     const health=provider.getHealth();
     const readiness=this.providerCapabilities.get(this.providerSelection || {}) || unverifiedReadiness(provider.model);
+
+    let models=[];let modelCatalog=[];let listError=null;
+    try {
+      if (typeof provider.listModelCatalog === 'function') {
+        modelCatalog=await provider.listModelCatalog();
+        modelCatalog=this.providerCapabilities.projectCatalog(modelCatalog, providerPreferences(input));
+        models=modelCatalog.map(item => item.id);
+      } else models=await provider.listModels();
+    } catch (error) { listError=error?.message || String(error); }
+
     return {
       provider:{
         ...health,
         configured:providerKind === 'cline' ? Boolean(input.clineModel && (auth?.authenticated || process.env.CLINE_API_KEY)) : Boolean(provider.baseUrl),
-        reachable:null,
-        healthy:null,
-        failureReason:null,
-        contactState:'not_checked',
+        reachable:!listError,
+        healthy:!listError,
+        failureReason:listError || health.failureReason || null,
+        contactState:listError ? 'failed' : 'checked',
         agentReady:readiness.agentReady,
         agentReadiness:readiness,
       },
-      models:[],
-      modelCatalog:[],
+      models,
+      modelCatalog,
       auth,
       preferences:providerPreferences(input),
-      error:null,
+      error:listError,
     };
   }
 
