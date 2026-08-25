@@ -6,12 +6,13 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createWorkspaceBridgeServer } = require('../src/app/workspace-bridge-server');
 const { IdePreferences } = require('../src/system/ide-preferences');
+const { DEFAULTS: PREFERENCE_DEFAULTS } = require('../src/system/ide-preferences');
 const { LocalRuntimeDiagnostics } = require('../src/system/local-runtime-diagnostics');
 const { SkillCatalog } = require('../src/system/skill-catalog');
 const { WorkspaceGitStatus } = require('../src/system/workspace-git-status');
 const { validateWorkspacePath } = require('../src/system/workspace-path-guard');
 const { parseWorkbenchLayout } = require('../src/system/workbench-layout');
-const { AgentRuntimeAdapter } = require('./agent-runtime-adapter');
+const { AgentRuntimeAdapter } = require('./agent-runtime-adapter-extensions');
 const { PtyTerminalManager } = require('./pty-terminal-manager');
 const { McpClient } = require('../src/system/mcp-client');
 const { ManagedChrome } = require('../src/system/managed-chrome');
@@ -22,6 +23,7 @@ const { BrowserResultStore } = require('../src/system/browser-result-store');
 const { BrowserSessionAuthority } = require('./browser-session-authority');
 const { TaskStateRouterBridge } = require('./task-state-router-bridge');
 const { WorkspaceCloneSync } = require('../src/system/workspace-clone-sync');
+const { AutoPlanService } = require('../src/system/auto-plan-service');
 const { BrowserEvidenceStore, defaultBrowserEvidenceRoot } = require('../src/browser/observable-browser-runtime');
 
 const bridgePort = Number(process.env.ACCESS_AGENT_IDE_BRIDGE_PORT || 7726);
@@ -50,6 +52,7 @@ let browserRelay;
 let browserAuthority;
 let taskStateRouterBridge;
 let workspaceSync;
+let autoPlanService = null;
 let runtimeActive = false;
 let workspaceRoot = path.resolve(process.env.ACCESS_AGENT_WORKSPACE_ROOT || process.cwd());
 
@@ -194,6 +197,23 @@ async function startOwnedRuntime() {
   return { ok: true, status: await runtimeStatus() };
 }
 
+function initAutoPlan() {
+  if (autoPlanService) {
+    autoPlanService.setWorkspaceRoot(workspaceRoot);
+  } else {
+    autoPlanService = new AutoPlanService({
+      workspaceRoot,
+      watchPaths: preferenceValues?.autoPlanWatchPaths || ['.'],
+      getAgentRuntime: () => agentRuntime,
+      getPrompt: () => preferenceValues?.autoPlanPrompt || '',
+      onTrigger: event => {
+        if (windowRef && !windowRef.isDestroyed()) windowRef.webContents.send('ide:auto-plan-trigger', event);
+      },
+    });
+  }
+  if (preferenceValues?.autoPlanEnabled === true) autoPlanService.enable();
+}
+
 async function restartOwnedRuntime() {
   await stopOwnedRuntime();
   agentRuntime = await createConfiguredAgentRuntime(workspaceRoot);
@@ -239,6 +259,7 @@ async function switchWorkspace(root) {
     nextServer = await listenBridge(nextRoot);
     bridgeServer = nextServer;
     workspaceRoot = nextRoot;
+    initAutoPlan();
     workspaceGit = new WorkspaceGitStatus(nextRoot);
     agentRuntime = await createConfiguredAgentRuntime(nextRoot);
     if (taskStateRouterBridge) taskStateRouterBridge.onWorkspaceChanged();
@@ -378,6 +399,48 @@ ipcMain.handle('ide:browser-relay-stop', () => browserAuthority.stopRelay());
 ipcMain.handle('ide:browser-recovery-read', (_event, input) => browserAuthority.getRecovery(input));
 ipcMain.handle('ide:browser-recovery-reconcile', (_event, input) => browserAuthority.reconcileRecovery(input));
 ipcMain.handle('ide:preferences', () => ({ ...preferenceValues, workspaceRoot, mcpEnabled }));
+ipcMain.handle('ide:default-system-prompt', () => PREFERENCE_DEFAULTS.systemPrompt || '');
+ipcMain.handle('ide:auto-plan-status', () => (autoPlanService ? autoPlanService.status() : { enabled:false, watching:false, running:false, workspaceRoot:'', watchPaths:['.'], pendingPaths:[] }));
+ipcMain.handle('ide:auto-plan-enable', async (_event, enabled) => {
+  const nextEnabled = enabled === true;
+  if (!autoPlanService) throw new Error('Auto-Plan service not initialized.');
+  if (nextEnabled) autoPlanService.enable();
+  else autoPlanService.disable();
+  preferenceValues = await preferences.save({
+    ...preferenceValues,
+    autoPlanEnabled: nextEnabled,
+    workspaceRoot,
+    mcpEnabled,
+  });
+  return autoPlanService.status();
+});
+ipcMain.handle('ide:auto-plan-set-prompt', async (_event, prompt) => {
+  const cleanPrompt = String(prompt || '').trim();
+  preferenceValues = await preferences.save({
+    ...preferenceValues,
+    autoPlanPrompt: cleanPrompt,
+    workspaceRoot,
+    mcpEnabled,
+  });
+  return { ok:true, prompt:cleanPrompt };
+});
+ipcMain.handle('ide:auto-plan-set-paths', async (_event, paths) => {
+  const requested = Array.isArray(paths) ? paths : [paths];
+  preferenceValues = await preferences.save({
+    ...preferenceValues,
+    autoPlanWatchPaths: requested,
+    workspaceRoot,
+    mcpEnabled,
+  });
+  if (autoPlanService) {
+    autoPlanService.watchPaths = [...(preferenceValues.autoPlanWatchPaths || ['.'])];
+    if (autoPlanService.enabled) {
+      autoPlanService.disable();
+      autoPlanService.enable();
+    }
+  }
+  return { ok:true, watchPaths:preferenceValues.autoPlanWatchPaths };
+});
 ipcMain.handle('ide:save-preferences', async (_event, input) => {
   preferenceValues = await preferences.save({
     ...preferenceValues,
@@ -509,7 +572,6 @@ function assertRuntimeActive() {
   }
 }
 ipcMain.handle('ide:agent-run', (_event, input = {}) => { assertRuntimeActive(); return agentRuntime.run(input); });
-ipcMain.handle('ide:agent-stop', (_event, turnId) => { assertRuntimeActive(); return agentRuntime.stop(turnId); });
 ipcMain.handle('ide:agent-status', () => agentRuntime.status());
 ipcMain.handle('ide:agent-intervene', (_event, text) => { assertRuntimeActive(); return agentRuntime.intervene(text); });
 ipcMain.handle('ide:agent-receipts', () => agentRuntime.receipts());
@@ -522,6 +584,7 @@ app.whenReady().then(async () => {
     preferences = new IdePreferences(app.getPath('userData'));
     preferenceValues = await preferences.load();
     workspaceSync = new WorkspaceCloneSync();
+    initAutoPlan();
     managedChrome = new ManagedChrome({ getSettings: () => preferenceValues });
     generalManagedChrome = new ManagedChrome({
       getSettings: () => ({
@@ -590,3 +653,4 @@ app.on('before-quit', () => {
   if (workspaceSync) workspaceSync.stop();
   if (bridgeServer) bridgeServer.close();
 });
+

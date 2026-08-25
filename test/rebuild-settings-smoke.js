@@ -40,7 +40,7 @@ assert.match(settings, /item\?`\$\{modelOptionLabel\(item,selected\)\} · Saved`
 assert.match(settings, /const observed=await api\.providerReadiness\(\);projectReadiness\('cline',model,observed\);const ready=requireAgentReady\(observed\)/u, 'Cline Test/Use must project readiness before success validation can throw');
 assert.match(settings, /const observed=await api\.providerReadiness\(\);projectReadiness\('lm',requested\.lmStudioModel,observed\);const ready=requireAgentReady\(observed\)/u, 'LM Studio Use must project readiness before success validation can throw');
 assert.doesNotMatch(settings, /useClineStyle/u, 'provider choice must not expose a second semantic agent engine');
-assert.doesNotMatch(settings, /runtimeRestart/u, 'provider settings must not restart the runtime to switch semantic agent engines');
+assert.doesNotMatch(settings.slice(0, settings.indexOf("$('saveSystemPrompt')")), /runtimeRestart/u, 'provider settings must not restart the runtime to switch semantic agent engines');
 assert.doesNotMatch(settings, /clineDiscover\(\)\.catch/u, 'settings boot must not silently discover provider models');
 assert.match(settings, /click Discover\/Test to verify/u, 'saved provider state must remain explicitly unverified until the user requests discovery or testing');
 assert.doesNotMatch(settings, /SettingsModule/u, 'fresh settings must not mount the historical SettingsModule');

@@ -60,6 +60,12 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   runtimeRestart: () => invoke('ide:runtime-restart'),
   workbenchLayout: () => invoke('ide:workbench-layout'),
   preferences: () => invoke('ide:preferences'),
+  defaultSystemPrompt: () => invoke('ide:default-system-prompt'),
+  autoPlanStatus: () => invoke('ide:auto-plan-status'),
+  autoPlanEnable: enabled => invoke('ide:auto-plan-enable', enabled),
+  autoPlanSetPrompt: prompt => invoke('ide:auto-plan-set-prompt', prompt),
+  autoPlanSetPaths: paths => invoke('ide:auto-plan-set-paths', paths),
+  onAutoPlanTrigger: listener => subscribe('ide:auto-plan-trigger', listener),
   savePreferences: input => invoke('ide:save-preferences', input),
   selectChromeProfile: currentPath => invoke('ide:select-chrome-profile', currentPath),
   browserStart: () => invoke('ide:browser-start'),
@@ -119,3 +125,15 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   diagnosticReveal: () => invoke('ide:diagnostic-reveal'),
   onDiagnosticRecord: listener => subscribe('ide:diagnostic-record', listener),
 }));
+
+// --- PATCH: Expose Agent Runtime API ---
+const invokeAgent = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
+
+contextBridge.exposeInMainWorld('accessAgentRuntime', Object.freeze({
+    getModels: () => invokeAgent('ide:get-models'),
+    start: (input) => invokeAgent('ide:agent-start', input),
+    stop: (turnId) => invokeAgent('ide:agent-stop', turnId),
+    getStatus: () => invokeAgent('ide:loop-status')
+}));
+// --- END PATCH ---
+

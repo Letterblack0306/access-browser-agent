@@ -57,6 +57,7 @@
         <div class="tabs" role="tablist" aria-label="Primary views">
           <button class="tab is-active" data-center-tab data-view="task" role="tab" aria-selected="true">Task</button>
           <button class="tab" data-center-tab data-view="execution" role="tab" aria-selected="false">Execution</button>
+          <button class="tab" data-center-tab data-view="manager" role="tab" aria-selected="false">Agent Manager</button>
           <button class="tab" data-center-tab data-view="editor" role="tab" aria-selected="false">Editor</button>
         </div>
         <section class="view" data-center-view data-view="task">
@@ -66,6 +67,13 @@
           </div>
         </section>
         <section class="view" data-center-view data-view="execution" hidden><div class="panel"><header class="panel-header"><span class="panel-title">Execution Monitor</span><div class="panel-actions"><button id="refreshTrace" class="control compact" type="button">Refresh trace</button></div></header><div id="executionList" class="panel-body execution-list"></div></div></section>
+        <section class="view" data-center-view data-view="manager" hidden>
+          <div class="manager-view">
+            <div class="panel manager-lanes-panel"><header class="panel-header"><span class="panel-title">Agent Manager</span></header><div id="agentLanes" class="panel-body agent-lanes"></div></div>
+            <div class="panel manager-stream-panel"><header class="panel-header"><span class="panel-title">Artifact Stream</span></header><div id="artifactStream" class="panel-body artifact-stream" aria-live="polite"></div></div>
+            <div class="panel manager-reasoning-panel"><header class="panel-header"><span class="panel-title">Reasoning Trace</span></header><div id="reasoningTrace" class="panel-body reasoning-trace"></div></div>
+          </div>
+        </section>
         <section class="view" data-center-view data-view="editor" hidden><div class="editor-view"><div class="editor-toolbar"><span id="editorPath" class="editor-path">No file open</span><button id="saveFile" class="control compact" type="button" disabled>Save</button></div><textarea id="editorText" class="editor-textarea" spellcheck="false" aria-label="File editor" disabled></textarea></div></section>
       </section>
       <div class="resizer vertical right" data-resizer="right" role="separator" aria-orientation="vertical" aria-label="Resize state panel" tabindex="0"></div>
@@ -122,5 +130,13 @@
   <script src="./rebuild-settings.js"></script>
   <script src="./rebuild-diagnostic-enhancer.js"></script>
   <script src="./rebuild-zoom.js"></script>
+<div id="agent-controls" class="agent-controls" style="padding: 10px; border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;">
+    <select id="model-select" style="flex: 1; padding: 5px; background: #111; color: #fff; border: 1px solid #333;">
+        <option value="">No models discovered</option>
+    </select>
+    <button id="btn-start" class="btn-play" style="padding: 8px 15px; background: #27ae60; color: white; border: none; cursor: pointer;">▶ Start Agent</button>
+    <button id="btn-stop" class="btn-stop" style="padding: 8px 15px; background: #e74c3c; color: white; border: none; cursor: pointer; display: none;">■ Stop</button>
+</div>
 </body>
 </html>
+

@@ -16,6 +16,7 @@ class UnifiedAgentService {
     skills,
     pinnedSkills,
     mcp,
+    systemPrompt,
     onEvent,
     onState,
     maxRetries,
@@ -59,6 +60,7 @@ class UnifiedAgentService {
       provider:this.provider,
       ctx:resources,
       maxToolCalls,
+      systemPrompt:systemPrompt || null,
     });
 
     this.runtime = new AgentSessionRuntime({

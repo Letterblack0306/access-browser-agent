@@ -228,6 +228,11 @@ async function loadActiveMain(){
   record({source:'runtime-instance',category:'environment',action:'instance_ownership',phase:'success',data:{pid:process.pid,cwd:process.cwd(),bridgePort:Number(process.env.ACCESS_AGENT_IDE_BRIDGE_PORT),singleInstancePolicy:'independent_rebuild_runtime'}});
   try{
     require('./main.js');
+  }catch(err){
+    console.error('MAIN_JS_LOAD_FAILED:', err.message);
+    console.error('STACK:', err.stack);
+    record({source:'main-wrapper',category:'runtime',action:'legacy_main_crash',phase:'failed',severity:'fatal',error:err});
+    app.quit();
   }finally{
     app.requestSingleInstanceLock=legacyRequestSingleInstanceLock;
   }
@@ -241,6 +246,64 @@ loadActiveMain().catch(error=>{
   app.quit();
 });
 
+
+
+
+
+// --- PATCH: Agent Runtime IPC Handlers ---
+const { AgentRuntimeAdapter } = require('./agent-runtime-adapter-extensions');
+// SAFE_GET_SETTINGS: prevents main process crash from 'window is not defined' in rebuild-settings.js
+const getSettings = () => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const settingsPath = path.join(app.getPath('userData'), 'ide-preferences.json');
+        if (fs.existsSync(settingsPath)) return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        return {};
+    } catch (e) { return {}; }
+};
+const adapter = new AgentRuntimeAdapter({ workspaceRoot: process.cwd(), getSettings });
+
+ipcMain.handle('ide:get-models', async () => {
+    return await adapter.discoverModels();
+});
+
+ipcMain.handle('ide:agent-start', async (event, input) => {
+    return await adapter.executeWithFallback(input);
+});
+
+// Stop is already handled by Line 110, but we ensure it's bound.
+if (!ipcMain.listenerCount('ide:agent-stop')) {
+    ipcMain.handle('ide:agent-stop', async (event, turnId) => {
+        return await adapter.stop(turnId);
+    });
+}
+// --- END PATCH ---
+
+
+// --- PATCH: Autonomous Loopback Heartbeat ---
+ipcMain.handle('ide:loop-status', async () => {
+    try {
+        // Check adapter state (running, stopped, waiting_for_instruction)
+        const state = adapter.getState ? adapter.getState() : { status: 'waiting' };
+        // Check for new pending instructions/feedback in the workspace
+        const feedback = adapter.checkForFeedback ? await adapter.checkForFeedback() : null;
+        return { state: state, feedback: feedback };
+    } catch (e) { return { error: e.message }; }
+});
+
+// Poll every 30 seconds to stay alive and check for feedback
+setInterval(async () => {
+    try {
+        const status = await adapter.getState?.() || { status: 'idle' };
+        // If the agent has submitted a report and is waiting, it stays active and updates internal state
+        if (status.status === 'waiting_for_instruction') {
+            // Trigger a passive check to see if any new instructions or files were dropped in
+            await adapter.checkForFeedback?.();
+        }
+    } catch (e) { /* Silent heartbeat */ }
+}, 30000);
+// --- END PATCH ---
 
 
 

@@ -84,14 +84,14 @@ async function main() {
 
   const settingsPath = path.join(__dirname, '..', 'electron', 'rebuild-settings.js');
   const settings = fs.readFileSync(settingsPath, 'utf8');
-  const start = settings.indexOf("$('clineTest')?.addEventListener");
-  const end = settings.indexOf("$('clineUse')?.addEventListener", start);
-  assert.ok(start >= 0 && end > start, 'Cline Test READY handler not found.');
+  const start = settings.indexOf('async function enhancedClineTest()');
+  const end = settings.indexOf('async function enhancedClineUse()', start);
+  assert.ok(start >= 0 && end > start, 'Cline Test READY flow (enhancedClineTest) not found.');
   const clineTest = settings.slice(start, end);
-  assert.match(clineTest, /discoverOnly:true/);
-  assert.match(clineTest, /probeReadiness:true/);
-  assert.doesNotMatch(clineTest, /api\.providerReadiness\(\)/, 'Cline Test READY must not probe whichever provider is currently active.');
-  assert.doesNotMatch(clineTest, /providerConfigure\(\{providerKind:'cline',clineProviderId:'cline',clineModel:model,persist:false\}\)/, 'Legacy authoritative Test READY configure path reappeared.');
+  assert.match(clineTest, /discoverOnly:\s*true/, 'Cline Test READY must keep the candidate-scoped discover-only configure.');
+  assert.match(clineTest, /probeReadiness:\s*true/, 'Cline Test READY must keep the candidate-scoped readiness probe.');
+  assert.doesNotMatch(clineTest, /persist:\s*true/, 'Cline Test READY must not install or persist a candidate provider.');
+  assert.match(clineTest, /const observed=await api\.providerReadiness\(\);projectReadiness\('cline',model,observed\);const ready=requireAgentReady\(observed\)/, 'Cline Test READY must project and require agent readiness through the shared readiness contract.');
 
   console.log('provider-candidate-readiness-authority-smoke: PASS');
 }

@@ -1,7 +1,21 @@
 'use strict';
 
 (() => {
-  const api = window.accessIde;
+  let api = window.accessIde;
+  if(!api){
+    api=new Proxy({},{get:(t,p)=>{
+      if(p==='then')return undefined;
+      return async()=>{};
+    }});
+    const waitForBridge=()=>{
+      if(window.accessIde){
+        api=window.accessIde;
+      }else{
+        setTimeout(waitForBridge,100);
+      }
+    };
+    waitForBridge();
+  }
   const Projection = window.RebuildRuntimeState;
   const shell = new window.RebuildShell(document).mount();
   let state = Projection.create();
@@ -100,6 +114,7 @@
     text('eventCount', state.events.length);
     text('problemCount', state.problems.length);
     renderEvents(); renderProblems();
+    renderArtifactStream(); renderReasoningTrace(); void renderAgentLanes();
   }
 
   function renderEvents() {
@@ -267,28 +282,179 @@ await refreshStatus({quiet:true,force:true});
   }
 
   function renderLiveSessionStream() {
-    const host = $('conversation'); if (!host) return;
+    const host = document.getElementById('conversation');
+    if (!host) return;
+
+    // Runtime status block
+    let runtimeBlock = document.getElementById('runtimeStatusBlock');
+    if (!runtimeBlock) {
+      runtimeBlock = document.createElement('div');
+      runtimeBlock.id = 'runtimeStatusBlock';
+      runtimeBlock.className = 'status-dashboard';
+      host.prepend(runtimeBlock);
+    }
+
+    const providerModel = state.provider?.model || latestSnapshot?.provider?.model || '—';
+    const providerState = state.provider?.state || 'unknown';
+    const isActive = state.runtime?.active === true;
+
+    runtimeBlock.innerHTML = `
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="label">Runtime</span>
+          <span class="value ${isActive ? 'active' : 'idle'}">${isActive ? '● Active' : '○ Idle'}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Provider</span>
+          <span class="value">${escapeHtml(providerState)}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Model</span>
+          <span class="value">${escapeHtml(providerModel)}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Session</span>
+          <span class="value">${escapeHtml(state.agentSession?.sessionId || '—')}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Turn</span>
+          <span class="value">${escapeHtml(state.agentSession?.turnId || '—')}</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Delivery</span>
+          <span class="value ${state.browserDelivery?.state === 'idle' ? 'idle' : 'active'}">${escapeHtml(state.browserDelivery?.state || 'idle')}</span>
+        </div>
+      </div>
+    `;
+
+    // Operation steps block
+    let stepsBlock = document.getElementById('operationStepsBlock');
+    if (!stepsBlock) {
+      stepsBlock = document.createElement('div');
+      stepsBlock.id = 'operationStepsBlock';
+      stepsBlock.className = 'steps-block';
+      runtimeBlock.after(stepsBlock);
+    }
+
+    const steps = deriveOperationSteps();
+    if (steps.length > 0) {
+      stepsBlock.innerHTML = `
+        <div class="steps-header">Current Operation</div>
+        ${steps.map((step, i) => `
+          <div class="step-row ${step.status}">
+            <span class="step-number">${String(i + 1).padStart(2, '0')}</span>
+            <span class="step-name">${escapeHtml(step.name)}</span>
+            <span class="step-status">${step.status === 'active' ? '🔄' : step.status === 'done' ? '✅' : '⏳'}</span>
+          </div>
+        `).join('')}
+      `;
+      stepsBlock.style.display = 'block';
+    } else {
+      stepsBlock.style.display = 'none';
+    }
+
+    // Browser Loop block
+    let loopBlock = document.getElementById('browserLoopBlock');
+    if (!loopBlock) {
+      loopBlock = document.createElement('div');
+      loopBlock.id = 'browserLoopBlock';
+      loopBlock.className = 'loop-dashboard';
+      stepsBlock.after(loopBlock);
+    }
+
+    const target = state.browserTarget?.target;
+    const loopState = state.loop?.state || 'stopped';
+    const cdp = latestSnapshot?.browser?.endpoint || '—';
+
+    loopBlock.innerHTML = `
+      <div class="loop-grid">
+        <div class="loop-item">
+          <span class="label">Target</span>
+          <span class="value">${target?.url ? escapeHtml(target.url) : '—'}</span>
+        </div>
+        <div class="loop-item">
+          <span class="label">State</span>
+          <span class="value ${loopState === 'waiting_for_instruction' ? 'waiting' : ''}">${escapeHtml(loopState)}</span>
+        </div>
+        <div class="loop-item">
+          <span class="label">CDP</span>
+          <span class="value">${escapeHtml(cdp)}</span>
+        </div>
+        <div class="loop-item">
+          <span class="label">Instruction</span>
+          <span class="value">${escapeHtml(state.operation?.instructionId || '—')}</span>
+        </div>
+      </div>
+    `;
+
+    const empty = host.querySelector('#conversationEmpty');
+    if (empty) empty.remove();
+  }
+
+  function deriveOperationSteps() {
+    const steps = [];
+    const op = state.operation || {};
+    const agent = state.agentSession || {};
+    const delivery = state.browserDelivery || {};
+
+    const baseSteps = [
+      { name: 'Inspecting workspace', status: state.workspace?.root ? 'done' : 'pending' },
+      { name: 'Provider readiness', status: state.provider?.agentReady ? 'done' : 'pending' },
+    ];
+    steps.push(...baseSteps);
+
+    if (op.instructionId) {
+      const opStatus = op.state === 'executing' ? 'active' : op.state === 'result_queued' ? 'done' : 'pending';
+      steps.push({ name: 'Executing: ' + op.instructionId.slice(0, 12), status: opStatus });
+    }
+
+    if (delivery.instructionId) {
+      const deliveryStatus = delivery.state === 'rendered_delivered' ? 'done' : delivery.state === 'delivery_failed' ? 'active' : 'pending';
+      steps.push({ name: 'Delivering result', status: deliveryStatus });
+    }
+
+    if (agent.running) {
+      steps.push({ name: 'Agent ' + (agent.state || 'running'), status: 'active' });
+    }
+
+    return steps.slice(0, 8);
+  }
+
+  // ── Agent Manager surfaces (observability only; no manual instruction path) ──
+  function renderArtifactStream() {
+    const host = $('artifactStream'); if (!host) return;
     const records = diagnosticRecords.filter(liveStreamRecord).slice(-100);
     if (!records.length) {
-      host.innerHTML = '<div id="conversationEmpty" class="empty-state"><strong>Waiting for session activity</strong>Submit an instruction or start the agent loop. Real agent reasoning, tool execution, terminal outputs, and evidence will stream here dynamically.</div>';
+      host.innerHTML = '<div class="empty-state compact-empty"><strong>Waiting for agent activity</strong>Submit a browser instruction or start the Browser Loop. Agent, tool, and system activity streams here.</div>';
       return;
     }
     const isAtBottom = host.scrollHeight - host.scrollTop - host.clientHeight <= 40;
-    host.innerHTML = `<div class="live-session-stream">${records.map(record => {
+    host.innerHTML = records.map(record => {
       const role = liveStreamRole(record);
-      const tone = toneFor(record?.severity || record?.phase || record?.action);
-      const actor = role === 'agent' ? 'A' : role === 'tool' ? 'T' : 'R';
-      const who = role === 'agent' ? 'agent reasoning' : role === 'tool' ? 'tool action' : 'runtime event';
-      const correlation = correlationSummary(record);
-      const time = String(record?.timestamp || '').slice(11,19);
-      const data = record?.data || {};
-      const payloadDetails = data.inputSummary || data.outputSummary || data.result || data.detail || null;
-      const payloadText = payloadDetails ? (typeof payloadDetails === 'string' ? payloadDetails : JSON.stringify(payloadDetails, null, 2)) : '';
-      return `<article class="live-stream-message ${role}"><div class="live-stream-avatar ${role}">${actor}</div><div class="live-stream-content"><div class="live-stream-who">${who}${time ? ` · ${escapeHtml(time)}` : ''}</div><div class="live-tool-cell" data-tone="${tone}"><div class="live-tool-head"><span class="live-tool-name">${escapeHtml(liveStreamTitle(record))}</span><span class="live-tool-state">${escapeHtml(fmt(record?.phase || 'event'))}</span></div><div class="live-tool-body">${escapeHtml(liveStreamBody(record))}${payloadText ? `<pre class="live-stream-payload">${escapeHtml(payloadText)}</pre>` : ''}</div><div class="live-tool-foot"><span>${escapeHtml(record?.source || record?.category || 'runtime')}</span><span>${escapeHtml(correlation || 'ground truth evidence')}</span></div></div></div></article>`;
-    }).join('')}</div>`;
-    if (isAtBottom) {
-      host.scrollTop = host.scrollHeight;
-    }
+      const label = role === 'agent' ? 'Agent' : role === 'tool' ? 'Tool' : 'System';
+      const time = String(record.timestamp || '').slice(11, 19);
+      return `<article class="artifact-card"><div class="artifact-card-header"><span class="artifact-label ${role}">${escapeHtml(label)}</span><span class="artifact-time">${escapeHtml(time)}</span></div><div class="artifact-card-body"><strong>${escapeHtml(liveStreamTitle(record))}</strong><br>${escapeHtml(liveStreamBody(record))}</div></article>`;
+    }).join('');
+    if (isAtBottom) host.scrollTop = host.scrollHeight;
+  }
+
+  function renderReasoningTrace() {
+    const host = $('reasoningTrace'); if (!host) return;
+    const traces = diagnosticRecords.filter(r => String(r?.category || '').toLowerCase() === 'agent').slice(-20);
+    if (!traces.length) { host.innerHTML = '<div class="trace-empty">No reasoning events yet.</div>'; return; }
+    host.innerHTML = traces.map(r => `<div class="trace-row">${escapeHtml(r.data?.summary || r.detail || r.message || fmt(r.action || 'event'))}</div>`).join('');
+  }
+
+  async function renderAgentLanes() {
+    const host = $('agentLanes'); if (!host || host.dataset.loading === '1') return;
+    host.dataset.loading = '1';
+    try {
+      const status = await api.agentStatus().catch(() => ({}));
+      const sessionId = status?.sessionId || null;
+      const trace = sessionId ? await api.agentExecutionTrace(sessionId).catch(() => []) : [];
+      const lanes = Array.isArray(trace) && trace.length ? trace : [{ id: 'main', name: 'Main Orchestrator', status: state.operation.state === 'running' || status?.running ? 'Active' : 'Idle', detail: status?.status || state.agentSession.detail || 'Ready' }];
+      host.innerHTML = lanes.slice(-8).map((item, i) => `<div class="lane"><div class="lane-header"><span>${escapeHtml(item.name || item.id || `Lane ${i + 1}`)}</span><span class="lane-badge">LANE ${String(i + 1).padStart(2, '0')}</span></div><div class="lane-desc">${escapeHtml(item.detail || item.summary || '')}</div><div class="lane-stats"><span>Status</span><span class="lane-val ${item.status === 'Active' ? 'is-active' : ''}">${escapeHtml(item.status || 'Unknown')}</span></div></div>`).join('');
+    } finally { delete host.dataset.loading; }
   }
 
   function renderRuntimeTruth() {
@@ -546,7 +712,7 @@ await refreshStatus({quiet:true,force:true});
     $('toggleMcp').addEventListener('click',async()=>{try{const current=await api.mcpStatus();const result=await api.setMcpEnabled(current?.enabled!==true);text('mcpDetail',`${result.status||'unknown'}${result.error?` — ${result.error}`:''}`);}catch(error){recordUiProblem('mcp',error);}});
     api.onAgentEvent(event=>{state=Projection.apply(state,{kind:'event',event:event||{}});render();if(['browser_relay.delivery_failed','browser_relay.instruction_recovery_required'].includes(event?.phase))shell.showBottom('problems');});
     api.onAgentState(event=>{state=Projection.apply(state,{kind:'event',event:{phase:'agent.state',...event}});refreshStatus({quiet:true,force:true});});
-    api.onDiagnosticRecord?.(record=>{ diagnosticRecords.push(record); if(diagnosticRecords.length>5000) diagnosticRecords=diagnosticRecords.slice(-5000); renderDiagnostics(); renderRuntimeTruth(); renderLiveSessionStream(); });
+    api.onDiagnosticRecord?.(record=>{ diagnosticRecords.push(record); if(diagnosticRecords.length>5000) diagnosticRecords=diagnosticRecords.slice(-5000); renderDiagnostics(); renderRuntimeTruth(); renderLiveSessionStream(); renderArtifactStream(); renderReasoningTrace(); });
   }
 
   async function boot() {
@@ -563,3 +729,75 @@ await refreshStatus({quiet:true,force:true});
 
   boot().catch(error=>{console.error(error);uiDiagnostic('renderer_boot','failed',{},error);text('statusDetail',`Workbench failed: ${error.message}`);});
 })();
+// --- PATCH: Initialize Agent Loop UI ---
+async function initAgentControls() {
+    const startBtn = document.getElementById('btn-start');
+    const stopBtn = document.getElementById('btn-stop');
+    const modelSelect = document.getElementById('model-select');
+
+    if (!startBtn || !stopBtn || !modelSelect) return;
+
+    // Load models
+    try {
+        const models = await window.accessAgentRuntime?.getModels?.() || [];
+        if (models.length > 0) {
+            modelSelect.innerHTML = '';
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id || m.name;
+                opt.textContent = m.name || m.id;
+                modelSelect.appendChild(opt);
+            });
+        }
+    } catch (e) { console.error("Model load failed", e); }
+
+    startBtn.addEventListener('click', async () => {
+        const url = document.getElementById('chat-url')?.value || '';
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        await window.accessAgentRuntime?.start({ chatUrl: url, model: modelSelect.value });
+    });
+
+    stopBtn.addEventListener('click', async () => {
+        stopBtn.style.display = 'none';
+        startBtn.style.display = 'inline-block';
+        await window.accessAgentRuntime?.stop();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', initAgentControls);
+// --- END PATCH ---
+
+// --- PATCH: Active Status Polling (Loopback) ---
+async function activeStatusPoll() {
+    try {
+        const status = await window.accessAgentRuntime?.getStatus?.() || { state: { status: 'unknown' } };
+        const statusEl = document.getElementById('loop-status-text');
+        if (statusEl) {
+            statusEl.textContent = status.state.status.toUpperCase();
+        }
+    } catch (e) { /* Poll failed silently */ }
+}
+
+// Check every 5 seconds for new instructions or feedback
+setInterval(activeStatusPoll, 5000);
+// --- END PATCH ---
+
+
+// --- PATCH: Live Status & Silent Failure ---
+window.__updateAgentStatus = function(text) {
+    const el = document.getElementById('loop-status-text');
+    if (el) el.textContent = text;
+};
+
+window.addEventListener('ide:agent-event', (event) => {
+    const d = event.detail || {};
+    if (d.phase === 'blocked') {
+        const out = document.getElementById('agent-chat-output');
+        if (out) { out.textContent = "I got stuck in a reasoning loop and was stopped. Please rephrase or check your search terms."; }
+        window.__updateAgentStatus('BLOCKED');
+    }
+    if (d.action === 'run') window.__updateAgentStatus('RUNNING - ' + (d.phase || 'Working...'));
+});
+// --- END PATCH ---
+

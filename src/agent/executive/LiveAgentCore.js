@@ -29,6 +29,7 @@ EXECUTION BOUNDARY:
 - If essential information/capability remains unavailable after bounded discovery, return a precise blocker and what is missing.`;
 
 const NO_PROGRESS_NOTICE = '[RUNTIME_NO_STATE_CHANGE: Observation state is identical to the previous step. No material output delta was detected. Do not repeat the same action unless state transitions or your strategy changes.]';
+const FINAL_REPLY_NOTICE = '[RUNTIME_FINAL_REPLY_REQUIRED: Repeated identical observations were detected with no material progress. Stop calling tools immediately. Respond now with your final user-visible natural-language summary of what you found, what is blocked, and why.]';
 
 function compact(value) {
   if (value === null || value === undefined) return null;
@@ -57,13 +58,14 @@ function visibleIntent(value) {
 }
 
 class LiveAgentCore {
-  constructor({ registry, provider, ctx = {}, maxToolCalls = 40 } = {}) {
+  constructor({ registry, provider, ctx = {}, maxToolCalls = 40, systemPrompt = null } = {}) {
     if (!registry) throw new Error('LiveAgentCore requires a ToolRegistry.');
     if (!provider) throw new Error('LiveAgentCore requires a provider.');
     this.registry = registry;
     this.provider = provider;
     this.ctx = ctx || {};
     this.maxToolCalls = Math.max(1, Number(maxToolCalls) || 40);
+    this.systemPrompt = String(systemPrompt || '').trim() || SYSTEM_PROMPT;
     this.conversations = new Map();
     this._ingestedInstructionIds = new Map();
     this._skillHash = new Map();
@@ -76,7 +78,7 @@ class LiveAgentCore {
       const durableMessages = Array.isArray(durableConversation?.messages)
         ? compactDurableMessages(durableConversation.messages)
         : [];
-      messages = [{ role:'system', content:SYSTEM_PROMPT + capabilityPrompt(this.registry) }, ...durableMessages];
+      messages = [{ role:'system', content:this.systemPrompt + capabilityPrompt(this.registry) }, ...durableMessages];
       this.conversations.set(sessionId, messages);
       const ingested = this.ingestedInstructionsFor(sessionId);
       for (const message of durableConversation?.messages || []) {
@@ -113,7 +115,7 @@ class LiveAgentCore {
     const skillHash = skillInfo?.hash ? String(skillInfo.hash) : 'none';
     if (this._skillHash.get(sessionId) !== skillHash) {
       const skillText = skillInfo?.text ? `\n\nACTIVE SKILLS (session-aware):\n${skillInfo.text}\n` : '';
-      messages[0] = { role:'system', content:SYSTEM_PROMPT + capabilityPrompt(this.registry) + skillText };
+      messages[0] = { role:'system', content:this.systemPrompt + capabilityPrompt(this.registry) + skillText };
       this._skillHash.set(sessionId, skillHash);
     }
 
@@ -145,6 +147,11 @@ class LiveAgentCore {
     let lastObservationFingerprint = null;
     let duplicateObservationCount = 0;
     let transientRuntimeNotice = null;
+    // One-shot grace: when stagnation is first detected, the loop is not hard-blocked.
+    // Instead the agent receives a final-reply demand and gets one more provider
+    // completion so it can produce its user-visible natural-language summary. A
+    // second stagnation detection after the grace turn still blocks.
+    let stagnationEscalated = false;
     // Rolling window of recent observation fingerprints so stagnation catches
     // oscillation (A,B,A,B repeats) in addition to consecutive duplicate calls.
     const noProgressWindow = 4;
@@ -215,6 +222,7 @@ class LiveAgentCore {
         };
         const batches = partitionToolCalls(response.toolCalls, isReadOnlyTool);
 
+        toolBatchLoop:
         for (const batch of batches) {
           if (toolCalls >= this.maxToolCalls) break;
 
@@ -334,10 +342,23 @@ class LiveAgentCore {
               });
             }
             if (stalled) {
+              await emitAgentEvent('runtime.no_progress', {
+                toolName:String(call.name || ''),
+                duplicateCount:duplicateObservationCount,
+                observationHash:fingerprint,
+                status:stagnationEscalated ? 'stagnation_blocked' : 'stagnation_final_reply_requested',
+              });
+              if (!stagnationEscalated) {
+                // Graceful hand-off: instead of killing the loop silently, give the
+                // agent one final provider completion demanded to answer the user.
+                stagnationEscalated = true;
+                transientRuntimeNotice = FINAL_REPLY_NOTICE;
+                break toolBatchLoop;
+              }
               return {
                 status:'blocked',
                 blocker:'no_progress_stagnation',
-                reason:`The reasoning loop produced ${consecutive ? duplicateObservationCount + ' consecutive identical observations' : 'an oscillating observation window (periodic repeat pattern)'} without material state change. Runtime reconciliation stopped the loop before another provider completion.`,
+                reason:`The reasoning loop produced ${consecutive ? duplicateObservationCount + ' consecutive identical observations' : 'an oscillating observation window (periodic repeat pattern)'} without material state change, including after a final-reply demand. Runtime reconciliation stopped the loop before another provider completion.`,
                 summary:'BLOCKED: repeated or oscillating identical observations produced no material progress.',
                 evidence:runtimeEvidence,
                 consumeInstructions:false,

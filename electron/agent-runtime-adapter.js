@@ -7,12 +7,15 @@ const { ModelReadinessRegistry, normalizeReadiness } = require('../src/llm/Model
 const { emitDiagnostic } = require('../src/system/runtime-diagnostic-bus');
 const { createCorrelation } = require('../src/system/runtime-correlation');
 const { runWithCorrelation } = require('../src/system/runtime-correlation-context');
+const { DEFAULTS: PREFERENCE_DEFAULTS } = require('../src/system/ide-preferences');
 
 class AgentRuntimeAdapter {
   constructor(options = {}) {
+    this.workspaceRoot = options.workspaceRoot || process.cwd();
     this.getWindow = options.getWindow || (() => null);
     this.getSettings = options.getSettings || (() => ({}));
     this.providerCapabilities = new ModelReadinessRegistry();
+    this.toolCallCache = new Map();
     this.providerSelection = null;
     this.clineAuth = options.clineAuth || global.__accessAgentAuthSession || new ClineAuthSession({
       preferencesPath:options.preferencesPath || '',
@@ -27,6 +30,7 @@ class AgentRuntimeAdapter {
       pinnedSkills:options.pinnedSkills,
       mcp:options.mcp || null,
       providerOptions:{ lmStudioBaseUrl:settings.lmStudioBaseUrl, lmStudioModel:settings.lmStudioModel, apiKey:settings.lmStudioApiKey, lmStudioImageInput:settings.lmStudioImageInput === true },
+      systemPrompt:settings.systemPrompt || PREFERENCE_DEFAULTS.systemPrompt,
       onEvent:event => {
         emitDiagnostic({ source:'agent-runtime', category:'agent', action:event?.type || event?.phase || 'event', phase:event?.status || 'event', correlation:correlationFrom(event), data:event });
         const window=this.getWindow();
@@ -201,7 +205,7 @@ async function probeProviderReadiness({ provider, selection = {}, registry }) {
   let text='';
 
   try {
-    const completion=await provider.complete({ messages:[{ role:'user', content:'Provider readiness check. Reply with exactly READY. Do not call tools.' }], tools:[] });
+    const completion=await provider.complete({ messages:[{ role:'user', content:'Provider readiness check. Reply with exactly READY. Do not call tools.' }], tools:[], max_tokens:512 });
     text=String(completion?.content || '').trim();evidence.model=completion?.model || null;
     if (completion?.providerRequestId) evidence.providerRequestIds.push(completion.providerRequestId);
     capabilities.completion=text === 'READY' ? 'verified' : 'failed';
@@ -211,7 +215,7 @@ async function probeProviderReadiness({ provider, selection = {}, registry }) {
   if (capabilities.completion === 'verified') {
     try {
       const probeTool={ type:'function', function:{ name:'diagnostic_probe', description:'Non-mutating readiness probe. Call this tool exactly once with value PING.', parameters:{ type:'object', properties:{ value:{ type:'string', const:'PING' } }, required:['value'], additionalProperties:false } } };
-      const toolResult=await provider.complete({ messages:[{ role:'user', content:'Agent capability probe. You MUST call diagnostic_probe exactly once with value PING. Do not answer with prose instead.' }], tools:[probeTool] });
+      const toolResult=await provider.complete({ messages:[{ role:'user', content:'Agent capability probe. You MUST call diagnostic_probe exactly once with value PING. Do not answer with prose instead.' }], tools:[probeTool], max_tokens:512 });
       if (toolResult?.providerRequestId) evidence.providerRequestIds.push(toolResult.providerRequestId);
       const call=Array.isArray(toolResult?.toolCalls) ? toolResult.toolCalls.find(item => item.name === 'diagnostic_probe') : null;
       capabilities.toolCalling=call?.arguments?.value === 'PING' ? 'verified' : 'unsupported';
@@ -220,7 +224,7 @@ async function probeProviderReadiness({ provider, selection = {}, registry }) {
 
     try {
       const responseFormat={ type:'json_schema', json_schema:{ name:'readiness', strict:true, schema:{ type:'object', properties:{ ready:{type:'boolean'} }, required:['ready'], additionalProperties:false } } };
-      const structured=await provider.complete({ messages:[{ role:'user', content:'Return JSON with ready=true.' }], tools:[], responseFormat });
+      const structured=await provider.complete({ messages:[{ role:'user', content:'Return JSON with ready=true.' }], tools:[], max_tokens:512, responseFormat });
       if (structured?.providerRequestId) evidence.providerRequestIds.push(structured.providerRequestId);
       let parsed=null;try { parsed=JSON.parse(String(structured?.content || '')); } catch {}
       capabilities.structuredOutput=parsed?.ready === true ? 'verified' : 'unsupported';
@@ -266,4 +270,14 @@ function providerPreferences(input = {}) {
 }
 function positiveInteger(value) { const number=Number(value);return Number.isInteger(number) && number > 0 ? number : null; }
 
+
+AgentRuntimeAdapter.prototype._checkCache = function(name, args) {
+    const key = name + ':' + JSON.stringify(args);
+    return this.toolCallCache.get(key) || null;
+};
+AgentRuntimeAdapter.prototype._setCache = function(name, args, res) {
+    const key = name + ':' + JSON.stringify(args);
+    this.toolCallCache.set(key, res);
+};
 module.exports={ AgentRuntimeAdapter, providerPreferences, providerIdentity, unverifiedReadiness, probeProviderReadiness };
+

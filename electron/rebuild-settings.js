@@ -61,6 +61,8 @@
   async function init(){
     if(!api)return;
     const prefs=await api.preferences().catch(()=>({}));
+    ensureSystemPromptUI(prefs);
+    ensureAutoPlanUI(prefs);
     if($('lmBaseUrl'))$('lmBaseUrl').value=prefs.lmStudioBaseUrl||'http://127.0.0.1:1234/v1';
     replaceOptions($('lmModel'),[],prefs.lmStudioModel||'');replaceOptions($('clineModel'),[],prefs.clineModel||'');
     if($('browserProfilePath'))$('browserProfilePath').value=prefs.browserProfilePath||'';
@@ -70,14 +72,20 @@
 
     $('clineLogin')?.addEventListener('click',async()=>{setBusy('clineLogin',true);try{await clineDiscover({clineLogin:true});}catch(error){setText('clineAuthStatus',error.message);setBadge('clineAuthBadge','Failed','bad');}finally{setBusy('clineLogin',false);}});
     $('clineLogout')?.addEventListener('click',async()=>{setBusy('clineLogout',true);try{await clineDiscover({clineLogout:true});setBadge('clineAuthBadge','Signed out');}catch(error){setText('clineAuthStatus',error.message);}finally{setBusy('clineLogout',false);}});
-    $('clineRefreshModels')?.addEventListener('click',async()=>{setBusy('clineRefreshModels',true);try{await clineDiscover();}catch(error){setText('clineAuthStatus',error.message);}finally{setBusy('clineRefreshModels',false);}});
-    $('clineTest')?.addEventListener('click',async()=>{setBusy('clineTest',true);try{const model=normalized($('clineModel')?.value);if(!model)throw new Error('Select a Cline model first.');const tested=await api.providerConfigure({providerKind:'cline',clineProviderId:'cline',clineModel:model,discoverOnly:true,probeReadiness:true,persist:false});const observed=tested?.readinessProbe;if(!observed)throw new Error('Candidate readiness probe did not return a result.');projectReadiness('cline',model,observed);const ready=requireAgentReady(observed);setText('clineAuthStatus',`${model} · agent-ready candidate · active provider unchanged · ${readinessSummary(ready)}${readinessTimestamp(ready)}`);setBadge('clineAuthBadge','Candidate ready','ok');}catch(error){setText('clineAuthStatus',error.message);setBadge('clineAuthBadge','Not ready','bad');}finally{setBusy('clineTest',false);}});
+    $('clineRefreshModels')?.addEventListener('click', async () => { setBusy('clineRefreshModels', true); try { await enhancedClineDiscover(); } catch(error) { setClineStatus(error.message, 'error'); } finally { setBusy('clineRefreshModels', false); } });
+    $('clineTest')?.addEventListener('click', async () => { setBusy('clineTest', true); try { await enhancedClineTest(); } catch(error) { setClineStatus(error.message, 'error'); } finally { setBusy('clineTest', false); } });
     $('clineUse')?.addEventListener('click',async()=>{setBusy('clineUse',true);try{const model=normalized($('clineModel')?.value);if(!model)throw new Error('Select a Cline model first.');const requested={providerKind:'cline',clineProviderId:'cline',clineModel:model};await api.providerConfigure({...requested,persist:false});const observed=await api.providerReadiness();projectReadiness('cline',model,observed);const ready=requireAgentReady(observed);const persisted=await api.savePreferences(requested);if(persisted.providerKind!=='cline'||persisted.clineModel!==model)throw new Error('Cline preference verification failed.');setText('clineAuthStatus',`${model} · active agent provider · ${readinessSummary(ready)}${readinessTimestamp(ready)}`);setBadge('clineAuthBadge','Active','ok');}catch(error){setText('clineAuthStatus',error.message);setBadge('clineAuthBadge','Not ready','bad');}finally{setBusy('clineUse',false);}});
-    $('lmDiscover')?.addEventListener('click',async()=>{setBusy('lmDiscover',true);try{await lmDiscover();}catch(error){setText('lmStatus',error.message);}finally{setBusy('lmDiscover',false);}});
+    $('lmDiscover')?.addEventListener('click', async () => { setBusy('lmDiscover', true); try { await enhancedLmDiscover(); } catch(error) { setLmStatus(error.message, 'error'); } finally { setBusy('lmDiscover', false); } });
     $('lmUse')?.addEventListener('click',async()=>{setBusy('lmUse',true);try{const requested=lmFields();if(!requested.lmStudioBaseUrl||!requested.lmStudioModel)throw new Error('Choose an LM Studio URL and model.');await api.providerConfigure({...requested,persist:false});const observed=await api.providerReadiness();projectReadiness('lm',requested.lmStudioModel,observed);const ready=requireAgentReady(observed);const persisted=await api.savePreferences(requested);for(const key of ['providerKind','lmStudioBaseUrl','lmStudioModel','lmStudioEndpointPolicy'])if(normalized(persisted?.[key])!==normalized(requested[key]))throw new Error(`LM Studio preference verification failed for ${key}.`);setText('lmStatus',`${requested.lmStudioModel} · active agent provider · ${readinessSummary(ready)}${readinessTimestamp(ready)}`);}catch(error){setText('lmStatus',error.message);}finally{setBusy('lmUse',false);}});
     $('chooseChromeProfile')?.addEventListener('click',async()=>{try{const result=await api.selectChromeProfile($('browserProfilePath')?.value||'');if(!result?.canceled&&$('browserProfilePath'))$('browserProfilePath').value=result.path||'';}catch(error){setText('browserSettingsStatus',error.message);}});
     $('saveBrowserDefaults')?.addEventListener('click',async()=>{setBusy('saveBrowserDefaults',true);try{const requested={browserMode:'managed',browserProfilePath:normalized($('browserProfilePath')?.value),browserExecutable:normalized($('browserExecutable')?.value),browserCdpPort:null};const saved=await api.savePreferences(requested);setText('browserSettingsStatus',saved.browserProfilePath?'Custom managed-Chrome profile override saved.':'Saved. Access-owned managed-Chrome profile and dynamic CDP port will be used automatically.');}catch(error){setText('browserSettingsStatus',error.message);}finally{setBusy('saveBrowserDefaults',false);}});
     $('saveIntegrationSettings')?.addEventListener('click',async()=>{setBusy('saveIntegrationSettings',true);try{const requested={mcpServerCommand:normalized($('mcpServerCommand')?.value)};const saved=await api.savePreferences(requested);if(normalized(saved.mcpServerCommand)!==requested.mcpServerCommand)throw new Error('MCP command persistence verification failed.');setText('mcpDetail','Integration settings saved.');}catch(error){setText('mcpDetail',error.message);}finally{setBusy('saveIntegrationSettings',false);}});
+    $('saveSystemPrompt')?.addEventListener('click',async()=>{const value=normalized($('systemPromptInput')?.value);if(!value){setText('systemPromptStatus','Prompt cannot be empty.');return;}setBusy('saveSystemPrompt',true);try{const saved=await api.savePreferences({systemPrompt:value});if(normalized(saved.systemPrompt)!==value)throw new Error('System prompt persistence verification failed.');await api.runtimeRestart();setText('systemPromptStatus','✅ Prompt saved and runtime restarted.');const badge=$('promptBadge');if(badge){badge.textContent='Active';badge.className='badge ok';}}catch(error){setText('systemPromptStatus',`Error: ${error.message}`);}finally{setBusy('saveSystemPrompt',false);}});
+    $('resetSystemPrompt')?.addEventListener('click',async()=>{try{const defaultPrompt=await api.defaultSystemPrompt();const input=$('systemPromptInput');if(input)input.value=defaultPrompt||'';setText('systemPromptStatus','Default prompt loaded. Click Save & Reset Runtime to apply.');}catch(error){setText('systemPromptStatus',`Error loading default prompt: ${error.message}`);}});
+    $('autoPlanToggle')?.addEventListener('click',async()=>{setBusy('autoPlanToggle',true);try{const current=await api.autoPlanStatus();const enabled=!(current?.enabled===true);const status=await api.autoPlanEnable(enabled);renderAutoPlanState(status);setText('autoPlanStatusDetail',enabled?'Watching for changes…':'Not active');}catch(error){setText('autoPlanStatusDetail',`Error: ${error.message}`);}finally{setBusy('autoPlanToggle',false);}});
+    $('autoPlanSavePrompt')?.addEventListener('click',async()=>{setBusy('autoPlanSavePrompt',true);try{const value=normalized($('autoPlanPrompt')?.value);await api.autoPlanSetPrompt(value);setText('autoPlanStatusDetail','Plan prompt saved.');}catch(error){setText('autoPlanStatusDetail',`Error: ${error.message}`);}finally{setBusy('autoPlanSavePrompt',false);}});
+    $('autoPlanSavePaths')?.addEventListener('click',async()=>{setBusy('autoPlanSavePaths',true);try{const raw=normalized($('autoPlanWatchPaths')?.value);const paths=raw?raw.split(/[,\n]/u).map(item=>item.trim()).filter(Boolean):['.'];await api.autoPlanSetPaths(paths);setText('autoPlanStatusDetail',`Watch paths saved (${paths.length}).`);}catch(error){setText('autoPlanStatusDetail',`Error: ${error.message}`);}finally{setBusy('autoPlanSavePaths',false);}});
+    api.onAutoPlanTrigger?.(event=>{const detail=$('autoPlanStatusDetail');if(!detail)return;if(event?.ok){const summary=normalized(event.result?.summary||event.result?.text)||'done';detail.textContent=`✅ Auto-executed for ${event.paths?.length||0} changed file(s). Result: ${summary.slice(0,200)}`;}else{detail.textContent=`❌ Auto-execution failed: ${event?.error?.message||'unknown error'}`;}});
 
     api.onAgentEvent?.(event=>{
       api.diagnosticEvent?.({source:'agent-event',category:String(event?.phase||'').startsWith('browser_relay.')?'loop':'agent',action:event?.phase||'agent_event',phase:event?.status||'event',correlation:{instructionId:event?.instructionId||null,operationId:event?.operationId||null,turnId:event?.turnId||null,sessionId:event?.sessionId||null},data:event||{}});
@@ -96,4 +104,359 @@
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>init().catch(console.error),{once:true});else init().catch(console.error);
+
+  function ensureSystemPromptUI(prefs={}){
+    const stack=document.querySelector('[data-view="settings"] .right-stack');
+    if(!stack||document.getElementById('systemPromptSection'))return;
+    const section=document.createElement('section');
+    section.id='systemPromptSection';
+    section.className='section';
+    const head=document.createElement('header');
+    head.className='section-head';
+    const title=document.createElement('span');
+    title.className='section-title';
+    title.textContent='System Prompt (Agent Personality)';
+    const badge=document.createElement('span');
+    badge.id='promptBadge';
+    badge.className='badge';
+    badge.textContent=normalized(prefs.systemPrompt)?'Custom':'Default';
+    head.append(title,badge);
+    const body=document.createElement('div');
+    body.className='section-body';
+    const label=document.createElement('label');
+    label.className='field-label';
+    label.append(document.createTextNode('Global instructions for the agent'));
+    const textarea=document.createElement('textarea');
+    textarea.id='systemPromptInput';
+    textarea.className='prompt-textarea';
+    textarea.rows=8;
+    const savedPrompt=normalized(prefs.systemPrompt);
+    textarea.value=savedPrompt;
+    if(!savedPrompt){
+      api.defaultSystemPrompt?.().then(value=>{textarea.placeholder=String(value||'')||'Enter a custom system prompt…';}).catch(()=>{});
+    }
+    label.append(textarea);
+    const micro=document.createElement('div');
+    micro.className='microcopy';
+    micro.textContent='This prompt stays active for the entire runtime session. Saving restarts the agent runtime so it takes effect.';
+    const row=document.createElement('div');
+    row.className='button-row spaced';
+    const saveButton=document.createElement('button');
+    saveButton.id='saveSystemPrompt';
+    saveButton.className='control primary compact';
+    saveButton.type='button';
+    saveButton.textContent='Save & Reset Runtime';
+    const resetButton=document.createElement('button');
+    resetButton.id='resetSystemPrompt';
+    resetButton.className='control compact';
+    resetButton.type='button';
+    resetButton.textContent='Reset to Default';
+    row.append(saveButton,resetButton);
+    const status=document.createElement('div');
+    status.id='systemPromptStatus';
+    status.className='microcopy';
+    status.textContent='Current prompt loaded.';
+    body.append(label,micro,row,status);
+    section.append(head,body);
+    stack.append(section);
+  }
+
+  function renderAutoPlanState(status={}){
+    const enabled=status.enabled===true;
+    const badge=$('autoPlanStatus');
+    if(badge){badge.textContent=enabled?'Active':'Inactive';badge.className=`badge ${enabled?'ok':''}`.trim();}
+    const toggle=$('autoPlanToggle');
+    if(toggle){toggle.textContent=enabled?'Disable':'Enable';toggle.className=`control ${enabled?'danger':'primary'} compact`;}
+  }
+
+  function ensureAutoPlanUI(prefs={}){
+    const stack=document.querySelector('[data-view="settings"] .right-stack');
+    if(!stack||document.getElementById('autoPlanSection'))return;
+    const section=document.createElement('section');
+    section.id='autoPlanSection';
+    section.className='section';
+    const head=document.createElement('header');
+    head.className='section-head';
+    const title=document.createElement('span');
+    title.className='section-title';
+    title.textContent='Auto-Execution on File Save';
+    const badge=document.createElement('span');
+    badge.id='autoPlanStatus';
+    badge.className='badge';
+    badge.textContent=prefs.autoPlanEnabled===true?'Active':'Inactive';
+    head.append(title,badge);
+    const body=document.createElement('div');
+    body.className='section-body';
+    const row=document.createElement('div');
+    row.className='button-row spaced';
+    const toggleButton=document.createElement('button');
+    toggleButton.id='autoPlanToggle';
+    toggleButton.className=`control ${prefs.autoPlanEnabled===true?'danger':'primary'} compact`;
+    toggleButton.type='button';
+    toggleButton.textContent=prefs.autoPlanEnabled===true?'Disable':'Enable';
+    row.append(toggleButton);
+    const promptLabel=document.createElement('label');
+    promptLabel.className='field-label';
+    promptLabel.append(document.createTextNode('Plan prompt'));
+    const promptInput=document.createElement('textarea');
+    promptInput.id='autoPlanPrompt';
+    promptInput.className='prompt-textarea';
+    promptInput.rows=4;
+    promptInput.value=prefs.autoPlanPrompt||'';
+    promptLabel.append(promptInput);
+    const micro=document.createElement('div');
+    micro.className='microcopy';
+    micro.textContent='This prompt is sent to the agent whenever a watched file changes. The agent receives the list of changed files.';
+    const pathsLabel=document.createElement('label');
+    pathsLabel.className='field-label';
+    pathsLabel.append(document.createTextNode('Watched paths (relative to workspace, comma or newline separated)'));
+    const pathsInput=document.createElement('input');
+    pathsInput.id='autoPlanWatchPaths';
+    pathsInput.className='text-input';
+    pathsInput.placeholder='.';
+
+    const paths=(Array.isArray(prefs.autoPlanWatchPaths)?prefs.autoPlanWatchPaths:['.']).join(', ');
+    pathsInput.value=paths;
+    pathsLabel.append(pathsInput);
+    const actionRow=document.createElement('div');
+    actionRow.className='button-row spaced';
+    const savePromptButton=document.createElement('button');
+    savePromptButton.id='autoPlanSavePrompt';
+    savePromptButton.className='control compact';
+    savePromptButton.type='button';
+    savePromptButton.textContent='Save Prompt';
+    const savePathsButton=document.createElement('button');
+    savePathsButton.id='autoPlanSavePaths';
+    savePathsButton.className='control compact';
+    savePathsButton.type='button';
+    savePathsButton.textContent='Save Watch Paths';
+    actionRow.append(savePromptButton,savePathsButton);
+    const detail=document.createElement('div');
+    detail.id='autoPlanStatusDetail';
+    detail.className='microcopy';
+    detail.textContent=prefs.autoPlanEnabled===true?'Watching for changes…':'Not active';
+    body.append(row,promptLabel,micro,pathsLabel,actionRow,detail);
+    section.append(head,body);
+    stack.append(section);
+  }
+
+// ── Enhanced LM Studio Setup ──
+let lmStudioState = { status: 'idle', models: [], selectedModel: null, error: null, agentReady: false };
+
+function setLmStatus(message, type) {
+  const el = document.getElementById('lmStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'microcopy status-' + (type || 'idle');
+}
+
+function renderLmModelList(models, catalog) {
+  const list = document.getElementById('lmModelList');
+  if (!list) return;
+  if (!models || models.length === 0) {
+    list.innerHTML = '<div class="empty-state compact-empty">No models found. Is LM Studio running?</div>';
+    return;
+  }
+  const catalogMap = {};
+  if (catalog) { catalog.forEach(function(m) { catalogMap[m.id || m.modelId] = m; }); }
+  list.innerHTML = models.map(function(model) {
+    var entry = catalogMap[model] || {};
+    var readiness = entry.readiness || {};
+    var isReady = readiness.agentReady === true;
+    var badge = isReady ? 'Agent Ready' : 'Not tested';
+    var badgeClass = isReady ? 'ok' : 'muted';
+    var size = entry.size ? ((entry.size / 1024 / 1024 / 1024).toFixed(1) + 'GB') : '—';
+    return '<div class="model-item ' + (model === lmStudioState.selectedModel ? 'selected' : '') + '" data-model="' + model + '" onclick="selectLmModel(\'' + model + '\')">' +
+      '<span class="model-name">' + escapeHtml(model) + '</span>' +
+      '<span class="model-badge ' + badgeClass + '">' + badge + '</span>' +
+      '<span class="model-size">' + size + '</span>' +
+      '<button class="control compact" onclick="event.stopPropagation(); selectLmModel(\'' + model + '\')">Select</button>' +
+      '</div>';
+  }).join('');
+}
+
+function selectLmModel(model) {
+  lmStudioState.selectedModel = model;
+  var select = document.getElementById('lmModel');
+  if (select) select.value = model;
+  renderLmModelList(lmStudioState.models, catalogState.lm ? catalogState.lm.catalog : null);
+  setLmStatus('Selected: ' + model, 'ok');
+}
+
+async function enhancedLmDiscover() {
+  var url = document.getElementById('lmBaseUrl').value.trim();
+  if (!url) { setLmStatus('Please enter a Base URL.', 'error'); return; }
+  setLmStatus('Discovering models…', 'busy');
+  lmStudioState.status = 'discovering';
+  try {
+    var result = await api.providerConfigure({
+      providerKind: 'lm-studio',
+      lmStudioBaseUrl: url,
+      discoverOnly: true,
+      persist: false
+    });
+    if (result && result.error) throw new Error(result.error);
+    lmStudioState.models = result.models || [];
+    lmStudioState.status = 'ready';
+    lmStudioState.error = null;
+    if (typeof rememberCatalog === 'function') {
+      rememberCatalog('lm', result.models || [], result.modelCatalog || []);
+    }
+    renderLmModelList(result.models || [], result.modelCatalog || []);
+    setLmStatus((result.models ? result.models.length : 0) + ' models found.', 'ok');
+  } catch (error) {
+    lmStudioState.status = 'error';
+    lmStudioState.error = error.message;
+    setLmStatus('Error: ' + error.message, 'error');
+  }
+}
+
+async function enhancedLmUse() {
+  var url = document.getElementById('lmBaseUrl').value.trim();
+  var modelSelect = document.getElementById('lmModel');
+  var model = modelSelect ? modelSelect.value : null;
+  if (!model) model = lmStudioState.selectedModel;
+  if (!url) { setLmStatus('Enter a Base URL first.', 'error'); return; }
+  if (!model) { setLmStatus('Select a model first.', 'error'); return; }
+  setLmStatus('Testing ' + model + '…', 'busy');
+  try {
+    const requested = { providerKind: 'lm-studio', lmStudioBaseUrl: url, lmStudioModel: model };
+    var result = await api.providerConfigure({ ...requested, discoverOnly: true, probeReadiness: true, persist: false });
+    if (result && result.error) throw new Error(result.error);
+    const observed=await api.providerReadiness();projectReadiness('lm',requested.lmStudioModel,observed);const ready=requireAgentReady(observed);
+    lmStudioState.agentReady = ready.agentReady === true;
+    await api.providerConfigure({ ...requested, persist: true });
+    await api.savePreferences({ lmStudioBaseUrl: url, lmStudioModel: model });
+    setLmStatus(model + ' is Agent Ready ✅ Active', 'ok');
+    renderLmModelList(lmStudioState.models, catalogState.lm ? catalogState.lm.catalog : null);
+  } catch (error) {
+    setLmStatus('Error: ' + error.message, 'error');
+  }
+}
+
+// ── Enhanced Cline Setup ──
+var clineState = { status: 'idle', authenticated: false, email: null, models: [], selectedModel: null, agentReady: false };
+
+function setClineStatus(message, type) {
+  var el = document.getElementById('clineAuthStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'microcopy status-' + (type || 'idle');
+}
+
+function renderClineModelList(models, catalog) {
+  var list = document.getElementById('clineModelList');
+  if (!list) return;
+  if (!models || models.length === 0) {
+    list.innerHTML = '<div class="empty-state compact-empty">No models found. Sign in and discover models.</div>';
+    return;
+  }
+  var catalogMap = {};
+  if (catalog) { catalog.forEach(function(m) { catalogMap[m.id || m.modelId] = m; }); }
+  list.innerHTML = models.map(function(model) {
+    var entry = catalogMap[model] || {};
+    var readiness = entry.readiness || {};
+    var isReady = readiness.agentReady === true;
+    var badge = isReady ? 'Agent Ready' : 'Not tested';
+    var badgeClass = isReady ? 'ok' : 'muted';
+    var ctx = entry.contextLength ? ((entry.contextLength / 1024).toFixed(0) + 'k ctx') : '—';
+    return '<div class="model-item ' + (model === clineState.selectedModel ? 'selected' : '') + '" data-model="' + model + '" onclick="selectClineModel(\'' + model + '\')">' +
+      '<span class="model-name">' + escapeHtml(model) + '</span>' +
+      '<span class="model-badge ' + badgeClass + '">' + badge + '</span>' +
+      '<span class="model-size">' + ctx + '</span>' +
+      '<button class="control compact" onclick="event.stopPropagation(); selectClineModel(\'' + model + '\')">Select</button>' +
+      '</div>';
+  }).join('');
+}
+
+function selectClineModel(model) {
+  clineState.selectedModel = model;
+  var select = document.getElementById('clineModel');
+  if (select) select.value = model;
+  renderClineModelList(clineState.models, catalogState.cline ? catalogState.cline.catalog : null);
+  setClineStatus('Selected: ' + model, 'ok');
+}
+
+async function enhancedClineDiscover() {
+  setClineStatus('Discovering models…', 'busy');
+  try {
+    var result = await api.providerConfigure({
+      providerKind: 'cline',
+      clineProviderId: 'cline',
+      discoverOnly: true,
+      persist: false
+    });
+    if (result && result.error) throw new Error(result.error);
+    clineState.models = result.models || [];
+    var auth = result.auth || {};
+    clineState.authenticated = auth.authenticated === true;
+    clineState.email = auth.email || null;
+    if (typeof rememberCatalog === 'function') {
+      rememberCatalog('cline', result.models || [], result.modelCatalog || []);
+    }
+    renderClineModelList(result.models || [], result.modelCatalog || []);
+    var badge = document.getElementById('clineAuthBadge');
+    if (badge) {
+      badge.textContent = clineState.authenticated ? 'Signed in' : 'Signed out';
+      badge.className = 'badge ' + (clineState.authenticated ? 'ok' : '');
+    }
+    setClineStatus((result.models ? result.models.length : 0) + ' models found.', 'ok');
+  } catch (error) {
+    setClineStatus('Error: ' + error.message, 'error');
+  }
+}
+
+async function enhancedClineTest() {
+  var modelSelect = document.getElementById('clineModel');
+  var model = modelSelect ? modelSelect.value : null;
+  if (!model) model = clineState.selectedModel;
+  if (!model) { setClineStatus('Select a model first.', 'error'); return; }
+  setClineStatus('Testing ' + model + '…', 'busy');
+  try {
+    var result = await api.providerConfigure({
+      providerKind: 'cline',
+      clineProviderId: 'cline',
+      clineModel: model,
+      discoverOnly: true,
+      probeReadiness: true,
+      persist: false
+    });
+    if (result && result.error) throw new Error(result.error);
+    const observed=await api.providerReadiness();projectReadiness('cline',model,observed);const ready=requireAgentReady(observed);
+    clineState.agentReady = ready.agentReady === true;
+    setClineStatus(model + ' is Agent Ready ✅', 'ok');
+    renderClineModelList(clineState.models, catalogState.cline ? catalogState.cline.catalog : null);
+  } catch (error) {
+    setClineStatus('Test failed: ' + error.message, 'error');
+  }
+}
+
+async function enhancedClineUse() {
+  var modelSelect = document.getElementById('clineModel');
+  var model = modelSelect ? modelSelect.value : null;
+  if (!model) model = clineState.selectedModel;
+  if (!model) { setClineStatus('Select a model first.', 'error'); return; }
+  setClineStatus('Activating ' + model + '…', 'busy');
+  try {
+    await api.providerConfigure({
+      providerKind: 'cline',
+      clineProviderId: 'cline',
+      clineModel: model,
+      persist: true
+    });
+    const observed=await api.providerReadiness();projectReadiness('cline',model,observed);requireAgentReady(observed);
+    await api.savePreferences({ clineModel: model });
+    clineState.selectedModel = model;
+    setClineStatus(model + ' is active ✅', 'ok');
+    renderClineModelList(clineState.models, catalogState.cline ? catalogState.cline.catalog : null);
+  } catch (error) {
+    setClineStatus('Error: ' + error.message, 'error');
+  }
+}
+
+
+if (typeof window !== 'undefined') {
+  window.selectLmModel = selectLmModel;
+  window.selectClineModel = selectClineModel;
+}
 })();
