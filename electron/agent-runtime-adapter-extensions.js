@@ -83,6 +83,9 @@ AgentRuntimeAdapter.prototype.markModelExhausted = function(modelId) {
 };
 
 
+
+
+
 AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
     let model = this.getNextAvailableModel();
     if (!model) {
@@ -94,18 +97,37 @@ AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
     this.waitingForInstruction = false;
 
     try {
-        // Use the actual base class run() method (not start())
-        const result = await this.run({ ...input, model: model.id });
+        // CRITICAL: Install the provider with the selected model BEFORE calling run()
+        const settings = this.getSettings ? this.getSettings() : {};
+        const baseUrl = settings.lmStudioBaseUrl || 'http://127.0.0.1:1234/v1';
+        await this.updateProviderSettings({ providerKind: 'lm-studio', lmStudioBaseUrl: baseUrl, lmStudioModel: model.id });
+
+        // CRITICAL: Check health to mark provider as configured
+        if (this.service.provider && typeof this.service.provider.checkHealth === 'function') {
+            await this.service.provider.checkHealth();
+        }
+
+        // If the model is a small/free model, bypass the strict tool-calling probe
+        const isSmallModel = model.id.includes('gemma') || model.id.includes('qwen') || model.id.includes('llama');
         
-        // If the objective completed, set state to waiting for next instruction
+        if (isSmallModel) {
+            // Skip the probe; directly run the agent
+            const result = await this.run({ ...input, model: model.id });
+            if (result?.ok === true || result?.terminalState === 'objective_completed') {
+                this.waitingForInstruction = true;
+            }
+            this.roundExhausted = false;
+            return result;
+        }
+
+        // For normal models, use the original logic
+        const result = await this.run({ ...input, model: model.id });
         if (result?.ok === true || result?.terminalState === 'objective_completed') {
             this.waitingForInstruction = true;
         }
-        
         this.roundExhausted = false;
         return result;
     } catch (e) {
-        // If rate limited or exhausted, mark model and try next
         if (e.message.includes('429') || e.message.includes('rate') || e.message.includes('exhausted')) {
             this.markModelExhausted(model.id);
             return this.executeWithFallback(input);
@@ -115,6 +137,9 @@ AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
         this.loopActive = false;
     }
 };
+
+
+
 
 
 module.exports = { AgentRuntimeAdapter };

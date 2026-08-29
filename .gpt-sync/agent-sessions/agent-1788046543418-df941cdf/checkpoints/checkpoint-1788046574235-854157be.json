@@ -1,0 +1,56 @@
+{
+  "checkpointId": "checkpoint-1788046574235-854157be",
+  "sessionId": "agent-1788046543418-df941cdf",
+  "createdAt": "2026-08-29T23:36:14.235Z",
+  "snapshot": {
+    "version": 1,
+    "sessionId": "agent-1788046543418-df941cdf",
+    "workspaceRoot": "G:\\Developments\\46_Accecc_Browser_Agent\\Browser Agent",
+    "status": "running",
+    "objective": "Reply with exactly OK",
+    "objectiveRevision": 1,
+    "providerSelection": null,
+    "activeStepId": null,
+    "activeAction": null,
+    "pendingInstructions": [],
+    "processedInstructionIds": [
+      "instruction-ca9035c4-8cd8-4d94-92f1-e72a875b62c6"
+    ],
+    "conversation": {
+      "messages": [
+        {
+          "role": "user",
+          "instructionId": "instruction-ca9035c4-8cd8-4d94-92f1-e72a875b62c6",
+          "content": "Reply with exactly OK"
+        }
+      ]
+    },
+    "decisions": [],
+    "observations": [
+      {
+        "stepId": "step-2c07d534-4595-42ee-9007-1a34d307b988",
+        "observation": {
+          "status": "completed",
+          "summary": "OK",
+          "evidence": [],
+          "consumeInstructions": true
+        },
+        "observedAt": "2026-08-29T23:36:14.232Z"
+      }
+    ],
+    "retry": {
+      "attempt": 0,
+      "lastError": null
+    },
+    "waiting": null,
+    "recoveryRequired": false,
+    "recovery": null,
+    "checkpointId": null,
+    "stopRequested": false,
+    "cancelRequested": false,
+    "completion": null,
+    "createdAt": "2026-08-29T23:35:43.422Z",
+    "updatedAt": "2026-08-29T23:36:14.234Z",
+    "lastEventId": "3f3c2817-5720-4b4a-9c98-14d396f42c85"
+  }
+}

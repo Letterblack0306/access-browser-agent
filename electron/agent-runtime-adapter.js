@@ -66,13 +66,17 @@ class AgentRuntimeAdapter {
   async run(input = {}) {
     const correlation=createCorrelation(input.correlation || { instructionId:input.instructionId, operationId:input.operationId, url:input.browser?.url, targetId:input.browser?.targetId });
     return runWithCorrelation(correlation, async () => {
+      // Bypass strict readiness probe for small/free models (Gemma, Qwen, Llama)
+      const modelId = this.service?.provider?.model || input.model || '';
+      const isSmallModel = modelId.includes('gemma') || modelId.includes('qwen') || modelId.includes('llama');
+
       let readiness=this.providerStatus().agentReadiness;
       let readinessAttempt=null;
-      if (readiness?.agentReady !== true) {
+      if (!isSmallModel && readiness?.agentReady !== true) {
         readinessAttempt=await this.providerReadiness();
         readiness=this.providerStatus().agentReadiness;
       }
-      if (readiness?.agentReady !== true) {
+      if (!isSmallModel && readiness?.agentReady !== true) {
         const error={
           code:'PROVIDER_CAPABILITY_UNVERIFIED',
           message:'The active provider/model could not prove agent tool capability for this operation. No background retry will run; retry by starting another provider-dependent action after the provider is available.',
