@@ -580,6 +580,11 @@ ipcMain.handle('ide:agent-reject', (_event, approvalId) => agentRuntime.reject(a
 // ide:get-models is handled globally in rebuild-main.js to bypass runtime gate
 // ide:agent-start is handled globally in rebuild-main.js to bypass runtime gate
 // ide:agent-stop is handled globally in rebuild-main.js to bypass runtime gate
+
+ipcMain.handle('ide:get-models', () => agentRuntime.discoverModels());
+ipcMain.handle('ide:agent-start', (_event, input = {}) => agentRuntime.executeWithFallback(input));
+ipcMain.handle('ide:agent-stop', (_event, turnId) => agentRuntime.stop(turnId));
+
 ipcMain.handle('ide:loop-status', () => {
   if (!runtimeActive || !agentRuntime) return { state: { status: 'stopped' }, feedback: null };
   const state = typeof agentRuntime.getState === 'function' ? agentRuntime.getState() : { status: 'unknown' };
