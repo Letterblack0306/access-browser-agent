@@ -30,6 +30,13 @@
         <option value="stop-all">Stop All Access resources</option>
       </select>
       <button id="resetLayout" type="button" hidden aria-hidden="true">Reset layout</button>
+<div id="agent-controls" class="agent-controls" data-agent-controls role="group" aria-label="Live agent controls">
+        <select id="model-select" class="model-select" aria-label="Model">
+          <option value="">No models discovered</option>
+        </select>
+        <button id="btn-start" class="control primary compact" type="button">▶ Start Agent</button>
+        <button id="btn-stop" class="control danger compact" type="button" style="display:none">■ Stop</button>
+      </div>
     </header>
 
     <main class="workbench" aria-label="Access Agent workbench">
@@ -95,7 +102,7 @@
         <section class="view" data-right-view data-view="settings" hidden>
           <div class="right-stack">
             <section class="section"><header class="section-head"><span class="section-title">Cline account</span><span id="clineAuthBadge" class="badge">Signed out</span></header><div class="section-body"><div class="button-row"><button id="clineLogin" class="control compact" type="button">Sign in</button><button id="clineLogout" class="control compact" type="button">Sign out</button></div><div id="clineAuthStatus" class="microcopy">Not signed in</div><label class="field-label">Model<select id="clineModel" class="target-select"><option value="">Select model…</option></select></label><div class="button-row"><button id="clineRefreshModels" class="control compact" type="button">Discover</button><button id="clineTest" class="control compact" type="button">Test READY</button><button id="clineUse" class="control primary compact" type="button">Use Cline</button></div><input id="clineAuthUrl" class="text-input hidden-field" readonly aria-label="Cline authorization URL"></div></section>
-            <section class="section"><header class="section-head"><span class="section-title">LM Studio</span></header><div class="section-body"><label class="field-label">Base URL<input id="lmBaseUrl" class="text-input" placeholder="http://127.0.0.1:1234/v1"></label><label class="field-label">Model<select id="lmModel" class="target-select"><option value="">Select model…</option></select></label><div class="button-row"><button id="lmDiscover" class="control compact" type="button">Discover</button><button id="lmUse" class="control primary compact" type="button">Use LM Studio</button></div><div id="lmStatus" class="microcopy">Not checked</div></div></section>
+            <section class="section"><header class="section-head"><span class="section-title">LM Studio</span><span id="lmProviderBadge" class="badge">Not checked</span></header><div class="section-body"><label class="field-label">Base URL<input id="lmBaseUrl" class="text-input" placeholder="http://127.0.0.1:1234/v1"></label><label class="field-label">Model<select id="lmModel" class="target-select"><option value="">Select model…</option></select></label><div id="lmModelList" class="model-list"></div><div class="button-row"><button id="lmDiscover" class="control compact" type="button">Discover</button><button id="lmTest" class="control compact" type="button">Test READY</button><button id="lmUse" class="control primary compact" type="button">Use LM Studio</button></div><div id="lmStatus" class="microcopy">Not checked</div></div></section>
             <section class="section"><header class="section-head"><span class="section-title">Managed Chrome defaults</span></header><div class="section-body"><label class="field-label">Profile folder <span class="field-optional">optional override</span><input id="browserProfilePath" class="text-input" placeholder="Automatic Access-owned profile"></label><div class="button-row"><button id="chooseChromeProfile" class="control compact" type="button">Choose…</button><button id="saveBrowserDefaults" class="control compact" type="button">Save</button></div><label class="field-label">Chrome executable <span class="field-optional">optional</span><input id="browserExecutable" class="text-input" placeholder="Auto-detect Chrome"></label><div id="browserSettingsStatus" class="microcopy">Access-owned defaults are used unless overridden.</div></div></section>
             <section class="section"><header class="section-head"><span class="section-title">Local agent tools</span></header><div class="section-body"><button id="toggleMcp" class="control compact" type="button">Toggle MCP</button><div id="mcpDetail" class="microcopy">Unknown</div></div></section>
           </div>
@@ -130,13 +137,6 @@
   <script src="./rebuild-settings.js"></script>
   <script src="./rebuild-diagnostic-enhancer.js"></script>
   <script src="./rebuild-zoom.js"></script>
-<div id="agent-controls" class="agent-controls" style="padding: 10px; border-top: 1px solid #333; display: flex; gap: 10px; align-items: center;">
-    <select id="model-select" style="flex: 1; padding: 5px; background: #111; color: #fff; border: 1px solid #333;">
-        <option value="">No models discovered</option>
-    </select>
-    <button id="btn-start" class="btn-play" style="padding: 8px 15px; background: #27ae60; color: white; border: none; cursor: pointer;">▶ Start Agent</button>
-    <button id="btn-stop" class="btn-stop" style="padding: 8px 15px; background: #e74c3c; color: white; border: none; cursor: pointer; display: none;">■ Stop</button>
-</div>
 </body>
 </html>
 

@@ -1,11 +1,45 @@
 'use strict';
 
 const CDP = require('chrome-remote-interface');
-const { endpointParts } = require('./provider-channel');
+const { endpointParts, PROVIDERS } = require('./provider-channel');
 
 const DEFAULT_TEXT_LIMIT = 24000;
 const DEFAULT_INTERACTIVE_LIMIT = 120;
 const DEFAULT_ACCESSIBILITY_LIMIT = 240;
+
+// Local (non-remote, fail-closed) browser access control. The default allowlist
+// is the set of provider hosts the browser-loop drives plus loopback, so general
+// browser tools cannot silently reach arbitrary external hosts. A denylist is
+// honored first and always wins over an allowlisted host.
+const LOOPBACK_HOSTS = Object.freeze(['localhost', '127.0.0.1', '::1']);
+
+function normalizeHostForCheck(hostname) {
+  let host = String(hostname || '').trim().toLowerCase();
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+  return host;
+}
+
+function hostListed(hostname, list) {
+  const host = normalizeHostForCheck(hostname);
+  if (!host) return false;
+  const entries = (Array.isArray(list) ? list : []).map(normalizeHostForCheck).filter(Boolean);
+  return entries.some(item => host === item || host.endsWith(`.${item}`));
+}
+
+function providerHosts(providers = PROVIDERS) {
+  const set = new Set();
+  for (const provider of Object.values(providers || {})) {
+    for (const host of provider?.hosts || []) {
+      const normalized = normalizeHostForCheck(host);
+      if (normalized) set.add(normalized);
+    }
+  }
+  return [...set];
+}
+
+function defaultAllowHosts(providers = PROVIDERS) {
+  return [...new Set([...LOOPBACK_HOSTS, ...providerHosts(providers)])];
+}
 
 function normalizeWebUrl(value) {
   let url;
@@ -58,6 +92,10 @@ class BrowserToolRuntime {
     accessibilityLimit = DEFAULT_ACCESSIBILITY_LIMIT,
     requireIsolatedContext = false,
     evidenceStore = null,
+    allowHosts = null,
+    denyHosts = null,
+    captureActions = process.env.ACCESS_AGENT_CAPTURE_BROWSER_SCREENSHOT === '1',
+    captureScreenshots = process.env.ACCESS_AGENT_CAPTURE_BROWSER_SCREENSHOT === '1',
   } = {}) {
     if (typeof getEndpoint !== 'function') throw new Error('BrowserToolRuntime requires getEndpoint().');
     this.cdpFactory = cdpFactory;
@@ -72,6 +110,13 @@ class BrowserToolRuntime {
     this.accessibilityLimit = Math.max(20, Math.min(500, Number(accessibilityLimit) || DEFAULT_ACCESSIBILITY_LIMIT));
     this.requireIsolatedContext = requireIsolatedContext !== false;
     this.evidenceStore = evidenceStore;
+    this.allowHosts = [...new Set([...defaultAllowHosts(), ...(Array.isArray(allowHosts) ? allowHosts.map(normalizeHostForCheck).filter(Boolean) : [])])];
+    this.denyHosts = Array.isArray(denyHosts) ? denyHosts.map(normalizeHostForCheck).filter(Boolean) : [];
+    this.captureActions = captureActions === true;
+    this.captureScreenshots = captureScreenshots === true;
+    this.actions = [];
+    this._lastActionId = null;
+    this._lastRecordError = null;
     this.ownedTargets = new Map();
     this.currentTargetId = null;
     this.browserContextId = null;
@@ -80,6 +125,23 @@ class BrowserToolRuntime {
 
   _assertAllowedUrl(value) {
     const url = normalizeWebUrl(value);
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    // Deny first, fail-closed. An allowlisted host is never exempt from a deny.
+    if (this.denyHosts.length && hostListed(host, this.denyHosts)) {
+      const error = new Error(`Browser navigation to ${host} is denied by the local browser denylist.`);
+      error.code = 'BROWSER_URL_DENIED';
+      error.classification = 'BROWSER';
+      error.details = { url, host };
+      throw error;
+    }
+    if (!hostListed(host, this.allowHosts)) {
+      const error = new Error(`Browser navigation to ${host} is not allowlisted for general browser tools. Configure allowHosts to permit it.`);
+      error.code = 'BROWSER_URL_NOT_ALLOWED';
+      error.classification = 'BROWSER';
+      error.details = { url, host, allowHosts: this.allowHosts };
+      throw error;
+    }
     if (!this.isProtectedUrl(url)) return url;
     const error = new Error('The selected Browser Loop conversation is protected from general browser tools. Use browserConversationRead for bounded read-only conversation context.');
     error.code = 'BROWSER_PROTECTED_CONVERSATION';
@@ -123,7 +185,7 @@ class BrowserToolRuntime {
     throw error;
   }
 
-  async _withTarget(targetId, callback) {
+  async _withTarget(targetId, callback, actionLabel = 'browser.action') {
     const { id, ownership } = this._ownedTarget(targetId);
     const endpoint = await this._endpoint();
     this._assertEndpointOwnership(id, ownership, endpoint);
@@ -133,7 +195,9 @@ class BrowserToolRuntime {
       if (client.Page?.enable) await client.Page.enable();
       const current = await evaluateValue(client, '({url:location.href})').catch(() => null);
       if (current?.url) this._assertAllowedUrl(current.url);
-      return await callback(client, id, endpoint);
+      const result = await callback(client, id, endpoint);
+      await this._recordAction(client, id, actionLabel, result, endpoint);
+      return result;
     } catch (error) {
       if (error?.code === 'BROWSER_PROTECTED_CONVERSATION') {
         this.ownedTargets.delete(id);
@@ -142,6 +206,58 @@ class BrowserToolRuntime {
       throw error;
     } finally {
       await client.close();
+    }
+  }
+
+  // Lightweight action recorder: when capture is enabled this persists a reviewable
+  // record of {action, url, screenshot} for each governed browser action through the
+  // evidence store, reusing the same screenshot privacy gate as failure evidence.
+  // A recording failure never fails the underlying browser action (evidence is
+  // best-effort), but is surfaced on _lastRecordError rather than hidden silently.
+  async _recordAction(client, targetId, actionLabel, result = {}, endpoint) {
+    if (this.captureActions !== true || !this.evidenceStore) return null;
+    let url = result?.url || null;
+    let title = result?.title || null;
+    try {
+      const meta = await evaluateValue(client, '({url:location.href,title:document.title,readyState:document.readyState})').catch(() => null);
+      if (meta?.url) url = meta.url;
+      if (meta?.title) title = meta.title || title;
+    } catch {
+      // Best-effort current-context capture; fall back to the action result.
+    }
+    let screenshotBase64 = null;
+    if (this.captureScreenshots && typeof client.Page?.captureScreenshot === 'function') {
+      try { screenshotBase64 = (await client.Page.captureScreenshot({ format:'png', fromSurface:true }))?.data || null; } catch { /* best-effort screenshot */ }
+    }
+    try {
+      const record = await this.evidenceStore.put({
+        dom: { url, title, action: actionLabel, readyState: null },
+        screenshotBase64: screenshotBase64 || undefined,
+        correlation: { targetId:String(targetId || ''), action:actionLabel },
+        privacy: {
+          state:'minimized',
+          screenshotPolicy: screenshotBase64 ? 'raw_local_opt_in' : 'disabled_by_default',
+          containsConversationContent: Boolean(screenshotBase64),
+          redactionNotes: ['Browser action recorder evidence excludes page body/chat text.'],
+        },
+      });
+      const screenshotRef = screenshotBase64 ? (Array.isArray(record?.refs) ? record.refs : []).find(ref => ref && ref.type === 'screenshot') : null;
+      const entry = {
+        action: actionLabel,
+        ts: new Date(record?.capturedAt || Date.now()).toISOString(),
+        url: url || null,
+        title: title || null,
+        targetId: String(targetId || ''),
+        artifactId: record?.artifactId || null,
+        screenshot: screenshotRef ? screenshotRef.path : null,
+        screenshotSha256: screenshotRef ? screenshotRef.sha256 : null,
+      };
+      this.actions.push(entry);
+      this._lastActionId = entry.artifactId;
+      return entry;
+    } catch (error) {
+      this._lastRecordError = { code: error?.code || 'RECORD_FAILED', message: error?.message || String(error), at: new Date().toISOString() };
+      return null;
     }
   }
 
@@ -307,7 +423,7 @@ class BrowserToolRuntime {
     } finally {
       await navigationClient.close();
     }
-    const settlement = await this._withTarget(targetId, client => this._waitReadyAndSettle(client));
+    const settlement = await this._withTarget(targetId, client => this._waitReadyAndSettle(client), 'browser.open');
     return { ok:true, targetId, url:String(settlement?.url || url), title:String(settlement?.title || ''), readyState:settlement?.readyState || null, owned:true, settlement };
   }
 
@@ -348,7 +464,7 @@ class BrowserToolRuntime {
       const settlement = await this._waitReadyAndSettle(client);
       this.currentTargetId = targetId;
       return { ok:true, targetId, requestedUrl:url, url:String(settlement?.url || url), title:String(settlement?.title || ''), readyState:settlement?.readyState || null, settlement };
-    });
+    }, 'browser.navigate');
   }
 
   async snapshot(input = {}) {
@@ -360,7 +476,7 @@ class BrowserToolRuntime {
       if (value?.url) this._assertAllowedUrl(value.url);
       this.currentTargetId = targetId;
       return { ok:true, targetId, ...value, accessibility:await this._accessibilitySnapshot(client) };
-    });
+    }, 'browser.snapshot');
   }
 
   async screenshot(input = {}) {
@@ -371,7 +487,7 @@ class BrowserToolRuntime {
       const ref=artifact.refs.find(item=>item.type==='screenshot');
       this.currentTargetId=targetId;
       return{ok:true,targetId,evidenceId:artifact.artifactId,sha256:ref?.sha256||null,mediaType:'image/png',capturedAt:artifact.capturedAt};
-    });
+    }, 'browser.screenshot');
   }
 
   async compareScreenshots(input = {}) {
@@ -400,7 +516,7 @@ class BrowserToolRuntime {
       if (observed?.url) this._assertAllowedUrl(observed.url);
       this.currentTargetId = targetId;
       return { ok:true, targetId, ref, method:result.method, element:result.element || null, beforeUrl:result.before || null, url:observed?.url || null, title:observed?.title || null, readyState:observed?.readyState || null, verifiedActionDispatch:true, downstreamOutcome:'SETTLED', settlement };
-    });
+    }, 'browser.click');
   }
 
   async type(input = {}) {
@@ -417,7 +533,7 @@ class BrowserToolRuntime {
       if (confirm?.url) this._assertAllowedUrl(confirm.url);
       this.currentTargetId = targetId;
       return { ok:Boolean(confirm?.present), targetId, ref, insertedCharacters:text.length, valueLength:confirm?.valueLength ?? null, url:confirm?.url || null, title:confirm?.title || null, submitted:false };
-    });
+    }, 'browser.type');
   }
 
   async scroll(input = {}) {
@@ -432,7 +548,7 @@ class BrowserToolRuntime {
       if (result?.url) this._assertAllowedUrl(result.url);
       if (result.ok) this.currentTargetId = targetId;
       return { ...result, targetId, ref:ref || null };
-    });
+    }, 'browser.scroll');
   }
 
   async close(input = {}) {
@@ -468,6 +584,11 @@ module.exports = {
   BrowserToolRuntime,
   normalizeWebUrl,
   evaluateValue,
+  normalizeHostForCheck,
+  hostListed,
+  providerHosts,
+  defaultAllowHosts,
+  LOOPBACK_HOSTS,
   DEFAULT_TEXT_LIMIT,
   DEFAULT_INTERACTIVE_LIMIT,
   DEFAULT_ACCESSIBILITY_LIMIT,

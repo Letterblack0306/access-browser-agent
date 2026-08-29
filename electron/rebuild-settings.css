@@ -45,3 +45,29 @@
 .hidden-field:placeholder-shown { display: none; }
 .section .text-input { font-family: var(--font-mono); font-size: 9px; }
 .section .target-select { font-size: 9px; }
+
+/* LM Studio status feedback */
+.microcopy.status-ok { color: var(--green, #4ec97e); }
+.microcopy.status-error { color: var(--red, #e5534b); }
+.microcopy.status-busy { color: var(--amber, #d4a72c); }
+
+/* Enhanced model list */
+.model-list { display: grid; gap: 3px; margin: 6px 0; max-height: 180px; overflow-y: auto; }
+.model-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft, rgba(45,45,49,.55));
+  cursor: pointer;
+  font-size: 9px;
+}
+.model-item:hover { background: rgba(255,255,255,.03); }
+.model-item.selected { border-color: var(--blue, #58a6ff); background: rgba(88,166,255,.06); }
+.model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+.model-badge { font-size: 8px; font-weight: 650; padding: 1px 4px; border-radius: 3px; }
+.model-badge.ok { color: var(--green, #4ec97e); background: rgba(78,201,126,.1); }
+.model-badge.muted { color: var(--faint); }
+.model-size { color: var(--faint); font-size: 8px; font-family: var(--font-mono); }

@@ -120,6 +120,11 @@ class AgentSessionRuntime {
     return executive.cancel(reason);
   }
 
+  async timeout(sessionId, reason) {
+    const executive = await this.getSession(sessionId);
+    return executive.forceTimeout(reason);
+  }
+
   async status(sessionId) {
     const executive = sessionId ? await this.getSession(sessionId) : await this.getCurrentSession();
     return executive ? executive.getState() : null;

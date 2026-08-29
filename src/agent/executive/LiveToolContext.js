@@ -6,10 +6,12 @@ const ToolRegistry = require('../ToolRegistry');
 const WorkspaceReader = require('../../system/workspace-reader');
 const { GovernedTerminal } = require('../../system/governed-terminal');
 const { MachineEnvironment } = require('../../system/machine-environment');
+const { WorkspaceCheckpointAuthority } = require('../../system/workspace-checkpoint-authority');
 
-function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, terminalShell, machineEnvironment, browserRuntime, onAskUser } = {}) {
+function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, terminalShell, machineEnvironment, browserRuntime, onAskUser, checkpointAuthority } = {}) {
   const root = path.resolve(workspaceRoot);
   const runtimeRoot = stateRoot ? path.resolve(stateRoot) : root;
+  const checkpoint = checkpointAuthority || new WorkspaceCheckpointAuthority({ workspaceRoot:root });
   const ws = reader || new WorkspaceReader(root);
   const machine = machineEnvironment || new MachineEnvironment();
   const govTerminal = terminal || (() => new GovernedTerminal({
@@ -216,10 +218,11 @@ function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, term
     browserTool('browserClose', 'Close one browser-tool-owned browsing tab. This cannot close an unowned ChatGPT transport tab.', { type:'object', properties:{ targetId:{type:'string'} }, additionalProperties:false }, 'close'),
   );
 
-  const registry = new ToolRegistry(declaredTools);
+  const registry = new ToolRegistry(declaredTools, { checkpointAuthority: checkpoint });
 
   return {
     registry,
+    checkpointAuthority: checkpoint,
     resources:{ workspace:ws, reader:ws, terminalShell:shell, governedTerminal:govTerminal, machineEnvironment:machine },
   };
 }

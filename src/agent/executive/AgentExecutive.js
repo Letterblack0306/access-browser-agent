@@ -120,6 +120,25 @@ class AgentExecutive {
     return this.getState();
   }
 
+  // FIX: Durable outer wall-clock timeout. Unlike a fabricated caller-side
+  // terminal, this aborts any in-flight attempt and persists a canonical
+  // objective.timed_out through the single write path so the caller-visible
+  // state equals the durable reconciled state. The run loop halts at its next
+  // terminal-state check and cannot emit a competing or duplicate terminal.
+  async forceTimeout(reason = 'Agent run exceeded the outer wall-clock limit.') {
+    await this.initialize();
+    if (isTerminalStatus(this.state.status) || this.state.status === 'stopped' || this.state.status === 'cancelled') return this.getState();
+    const text = String(reason || 'Agent run exceeded the outer wall-clock limit.').trim() || 'Agent run exceeded the outer wall-clock limit.';
+    const timeoutError = new Error(text);
+    timeoutError.code = 'AGENT_RUN_TIMEOUT';
+    this._abortCurrentAttempt(timeoutError);
+    if (!isTerminalStatus(this.state.status)) {
+      await this._append('objective.timed_out', { summary: text, evidence: [], reason: text });
+      await this._checkpoint('timed_out');
+    }
+    return this.getState();
+  }
+
   async reviseObjective(objective, reason = 'user_revision') {
     await this.initialize();
     this._assertRecoveryReconciled();
@@ -205,6 +224,11 @@ class AgentExecutive {
       if (decision.consumeInstructions && consumedInstructionIds.length) await this._append('instruction.processed', { instructionIds: consumedInstructionIds });
       await this._checkpoint('step_boundary');
 
+      // FIX: If an external authority (e.g. the outer wall-clock guard) already
+      // persisted a terminal state while the step was awaiting, halt now instead
+      // of emitting a competing or duplicate terminal event.
+      if (isTerminalStatus(this.state.status)) break;
+
       if (decision.status === 'completed') {
         await this._append('objective.completed', { summary: decision.summary, evidence: decision.evidence });
         await this._checkpoint('objective_completed');
@@ -221,6 +245,11 @@ class AgentExecutive {
       if (decision.status === 'failed') { await this._append('objective.failed', { summary: decision.summary, evidence: decision.evidence, reason: decision.reason || 'Agent step failed.' }); await this._checkpoint('failed'); break; }
       if (decision.status === 'blocked') { await this._append('objective.blocked', { summary: decision.summary, evidence: decision.evidence, dependency: decision.dependency || 'unresolved', reason: decision.reason || 'Agent is blocked.', retryAt: decision.retryAt }); await this._checkpoint('blocked'); break; }
       if (decision.status === 'timed_out') { await this._append('objective.timed_out', { summary: decision.summary, evidence: decision.evidence, reason: decision.reason || 'Agent step timed out.' }); await this._checkpoint('timed_out'); break; }
+      // FIX #P1: Explicit handling for the 'interrupted' status. Previously this
+      // was an unclassified internal signal that relied on the stop/cancel flag
+      // check above to short-circuit. Now it has a deterministic terminal path
+      // even if the flags were somehow cleared between abort and decision.
+      if (decision.status === 'interrupted') { await this._append('session.stopped', { reason: decision.reason || 'Execution was interrupted.' }); await this._checkpoint('interrupted'); break; }
       if (this.state.pendingInstructions.length === 0 && decision.continue !== true) { await this._append('input.waiting', { reason: decision.reason || 'No unresolved instruction remains.' }); break; }
     }
     return this.getState();
@@ -262,7 +291,11 @@ class AgentExecutive {
     });
   }
 
-  _abortCurrentAttempt(reason) { if (this._attemptController && !this._attemptController.signal.aborted) this._attemptController.abort(new Error(reason)); }
+  _abortCurrentAttempt(reason) {
+    if (!this._attemptController || this._attemptController.signal.aborted) return;
+    const cause = reason instanceof Error ? reason : new Error(String(reason || 'aborted'));
+    this._attemptController.abort(cause);
+  }
   _assertNotCancelled() { if (this.state?.status === 'cancelled' || this._cancelRequested) throw new Error('agent session is cancelled'); }
   _assertRecoveryReconciled() {
     if (!this.state?.recoveryRequired) return;

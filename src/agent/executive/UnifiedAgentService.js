@@ -5,6 +5,7 @@ const path = require('node:path');
 const AgentSessionRuntime = require('./AgentSessionRuntime');
 const { LiveAgentCore } = require('./LiveAgentCore');
 const { buildLiveToolContext } = require('./LiveToolContext');
+const { ACTIVE_STATUSES } = require('./AgentSessionState');
 const OpenAICompatibleProvider = require('../../llm/OpenAICompatibleProvider');
 
 class UnifiedAgentService {
@@ -101,9 +102,38 @@ class UnifiedAgentService {
       });
     }
     const state = accepted.runPromise
-      ? await accepted.runPromise
+      ? await this._withRunTimeout(accepted.sessionId, accepted.runPromise, input.timeoutMs)
       : await this.runtime.status(accepted.sessionId);
     return this._projectResult(state, accepted);
+  }
+
+  // FIX #P0 (defense-in-depth): If the run loop itself never terminates despite
+  // the per-step timeout, this outer guard protects the caller from blocking
+  // forever. It must NOT fabricate a non-durable terminal: it aborts the
+  // in-flight run loop and persists a canonical objective.timed_out through the
+  // single AgentExecutive write path, so the caller-visible state equals the
+  // durable reconciled state and the UI receives the terminal event.
+  async _withRunTimeout(sessionId, runPromise, timeoutMs) {
+    const limit = Number(timeoutMs) || 600_000;
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`Agent run exceeded the ${limit} ms outer timeout.`);
+        error.code = 'AGENT_RUN_TIMEOUT';
+        reject(error);
+      }, limit);
+    });
+    try {
+      return await Promise.race([runPromise, timeout]);
+    } catch (error) {
+      if (error?.code !== 'AGENT_RUN_TIMEOUT') throw error;
+      const reason = error.message;
+      await this.runtime.timeout(sessionId, reason);
+      const durable = await this.runtime.status(sessionId);
+      return durable || { status: 'timed_out', completion: { outcome: 'timed_out', summary: reason, evidence: [], reason, completedAt: new Date().toISOString() } };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // Approval methods remain only as compatibility responses for old callers.
@@ -322,9 +352,10 @@ class UnifiedAgentService {
 
   _mapStatus(state) {
     if (!state) return { running:false, status:'idle', turnId:null, pendingApproval:null };
+    const status = String(state.status || '');
     return {
-      running:['running','retrying'].includes(String(state.status)),
-      status:state.status,
+      running: ACTIVE_STATUSES.has(status),
+      status,
       turnId:state.sessionId,
       sessionId:state.sessionId,
       objective:state.objective,

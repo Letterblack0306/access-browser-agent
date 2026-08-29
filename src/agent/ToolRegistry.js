@@ -13,7 +13,8 @@ const GOVERNED_MUTATIONS = new Set([
 ]);
 
 class ToolRegistry {
-  constructor(tools = []) {
+  constructor(tools = [], options = {}) {
+    this.checkpointAuthority = options && options.checkpointAuthority ? options.checkpointAuthority : null;
     this.tools = new Map();
     if (Array.isArray(tools)) {
       for (const tool of tools) {
@@ -28,6 +29,46 @@ class ToolRegistry {
         });
       }
     }
+    // Plan/Act ownership inversion: the agent declares its own execution mode.
+    // Machine enforces: in 'plan' mode every governed mutation is blocked.
+    this.mode = 'act';
+    if (!this.tools.has('declareMode')) this._installModeTool();
+  }
+
+  _installModeTool() {
+    this.tools.set('declareMode', {
+      name:'declareMode',
+      description:'Declare the current execution mode. status "plan" enables read-only exploration: every governed workspace mutation (write/patch/delete/command) is blocked and returns PLAN_MODE_BLOCKED. status "act" re-enables governed mutations. Read-only inspection tools work in both modes. The agent owns this switch; the machine enforces it. Use it after finishing planning and before mutating.',
+      schema:{ type:'object', properties:{ status:{ type:'string', enum:['plan','act'] } }, required:['status'], additionalProperties:false },
+      execute:async (_ctx, args) => {
+        const status = String(args?.status || 'act').toLowerCase();
+        if (status !== 'plan' && status !== 'act') return { ok:false, error:`status must be "plan" or "act", got "${status}".` };
+        this.mode = status;
+        return { ok:true, mode:status, observation:`MODE:${status.toUpperCase()}`, message:`Execution mode is now ${status}.` };
+      },
+      evidence:(_result, args) => ({ verified:true, mode:String(args?.status || '').toLowerCase() }),
+      actionKind:null,
+      category:'mode',
+      readOnly:false,
+      operatingGuidance:'Prefer plan mode while reading/deciding, then switch to act before any governed mutation.',
+      failureModes:['invalid status value'],
+    });
+  }
+
+  /**
+   * Agent-declared execution mode gate. Returns true when a governed mutation
+   * is attempted while in plan mode, short-circuiting the call.
+   */
+  _blockedByPlanMode(name, actionKind, correlation) {
+    if (!GOVERNED_MUTATIONS.has(actionKind) || this.mode !== 'plan') return false;
+    const error = {
+      code:'PLAN_MODE_BLOCKED',
+      message:`Tool "${name}" is a workspace mutation and is blocked while the agent is in plan mode. Declare mode 'act' before mutating.`,
+      terminal:false,
+      retryable:false,
+    };
+    emitDiagnostic({ source:'tool-registry', category:'mode', action:'plan_mode_blocked', phase:'blocked', severity:'warn', correlation, data:{ toolName:name, actionKind, mode:this.mode, observation:'BLOCKED' }, error });
+    return true;
   }
 
   register(name, description, schema, executeFn, extras = {}) {
@@ -119,6 +160,10 @@ class ToolRegistry {
       const output = await tool.execute(ctx, args || {});
       const evidence = tool.evidence ? tool.evidence(output, args || {}) : { verified:output?.ok === true };
       const result = { ok:output?.ok === true, output, evidence };
+      if (result.ok && GOVERNED_MUTATIONS.has(tool.actionKind) && this.checkpointAuthority) {
+        this.checkpointAuthority.create({ stepId:correlation?.turnId || null, toolName:name, reason:'post-mutation' })
+          .catch(() => {});
+      }
       emitDiagnostic({ source:'tool-registry', category:'tool', action:'execute', phase:result.ok ? 'success' : 'observed', severity:result.ok ? 'info' : 'warn', durationMs:Date.now()-started, correlation, data:{ toolName:name, observation:result.ok ? 'SUCCESS' : observationKind(output), output } });
       return result;
     } catch (error) {

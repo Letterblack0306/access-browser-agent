@@ -5,7 +5,7 @@ const { conversationIdFromUrl } = require('../src/system/runtime-correlation');
 const { BrowserToolRuntime } = require('../src/browser/browser-tool-runtime');
 
 class BrowserSessionAuthority {
-  constructor({ managedChrome, generalManagedChrome = managedChrome, channel, relay, evidenceStore = null } = {}) {
+  constructor({ managedChrome, generalManagedChrome = managedChrome, channel, relay, evidenceStore = null, allowHosts = null, denyHosts = null } = {}) {
     if (!managedChrome || !channel || !relay) throw new Error('Browser session authority requires managed Chrome, provider channel, and relay.');
     this.managedChrome=managedChrome;
     this.generalManagedChrome=generalManagedChrome;
@@ -34,6 +34,8 @@ class BrowserSessionAuthority {
         return Boolean(expectedId&&conversationIdFromUrl(url)===expectedId);
       },
       evidenceStore,
+      allowHosts,
+      denyHosts,
     });
     global.__accessAgentBrowserToolRuntime=this.browserTools;
     global.__accessAgentConversationRuntime={read:options=>this.readConversation(options)};
@@ -366,12 +368,22 @@ return {receipt,recovery,target:{...scope.target}};
   stopRelay(){this.relay.stop();this.state=this.relay.status().target?'provider_ready':'stopped';this.error=null;this._diag('stop_relay','success');return this.status();}
 
   stop(){
-    this.epoch+=1;this.createdTarget=null;this.targets=[];this.relay.clearTarget('Browser session stopped.');this.state='stopped';this.error=null;this._diag('stop_browser','start');
+    this.epoch+=1;this.createdTarget=null;this.targets=[];this.relay.clearTarget('Browser session stopped.');
+    // FIX #P2: Introduce 'stopping' intermediate state so observable state
+    // reflects the in-progress Chrome termination rather than prematurely
+    // reporting 'stopped' while the process is still alive.
+    this.state='stopping';this.error=null;this._diag('stop_browser','start');
     return this.managedChrome.stop().then(async result=>{
       if(this.generalManagedChrome!==this.managedChrome) await this.generalManagedChrome.stop();
+      this.state='stopped';
       this._diag('stop_browser','success',{browser:result,generalBrowser:this.generalManagedChrome.status()});
       return result;
-    },error=>{this._diag('stop_browser','failed',{},error);throw error;});
+    },error=>{
+      // Even on failure, transition to 'stopped' — the authority considers
+      // itself stopped regardless; the OS will reclaim the process.
+      this.state='stopped';
+      this._diag('stop_browser','failed',{},error);throw error;
+    });
   }
 }
 function recoveryAuthorityError(code,message){

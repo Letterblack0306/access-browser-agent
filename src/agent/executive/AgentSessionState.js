@@ -10,6 +10,11 @@ const ACTIVE_STATUSES = new Set([
 
 const TERMINAL_STATUSES = new Set(['stopped', 'cancelled', 'completed', 'failed', 'blocked', 'timed_out']);
 
+// FIX #P1: Transitional statuses that are neither actively executing nor
+// terminal. They represent valid intermediate states that require an external
+// trigger (user action, reconciliation, or resume) to progress.
+const TRANSITIONAL_STATUSES = new Set(['idle', 'recovery_required']);
+
 function createInitialState({ sessionId, workspaceRoot, objective = '', providerSelection = null, createdAt = new Date().toISOString() } = {}) {
   if (!sessionId) throw new Error('sessionId is required');
   if (!workspaceRoot) throw new Error('workspaceRoot is required');
@@ -228,6 +233,7 @@ function reduceSessionEvent(previous, event) {
 
 function isActiveStatus(status) { return ACTIVE_STATUSES.has(String(status || '')); }
 function isTerminalStatus(status) { return TERMINAL_STATUSES.has(String(status || '')); }
+function isTransitionalStatus(status) { return TRANSITIONAL_STATUSES.has(String(status || '')); }
 function normalizeStringArray(value) { return Array.isArray(value) ? value.map(item => String(item || '').trim()).filter(Boolean) : []; }
 function unique(values) { return [...new Set(values)]; }
 function appendConversationMessage(state, message) {
@@ -264,4 +270,4 @@ function normalizeConversationMessage(message) {
 }
 function cloneJson(value) { if (value === undefined) return null; return JSON.parse(JSON.stringify(value)); }
 
-module.exports = { ACTIVE_STATUSES, TERMINAL_STATUSES, createInitialState, projectSession, reduceSessionEvent, isActiveStatus, isTerminalStatus };
+module.exports = { ACTIVE_STATUSES, TERMINAL_STATUSES, TRANSITIONAL_STATUSES, createInitialState, projectSession, reduceSessionEvent, isActiveStatus, isTerminalStatus, isTransitionalStatus };

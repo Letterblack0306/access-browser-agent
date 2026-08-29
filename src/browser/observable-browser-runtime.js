@@ -286,6 +286,12 @@ class ObservableBrowserInstructionRelay extends BrowserInstructionRelay {
           status: 'running',
           instructionId: loopState.deliveryResponse.sourceInstructionId || null,
         });
+        // Resolve-once intentionally skips instruction evaluation for this
+        // cycle, but it must still continue the polling chain that
+        // super._tick()'s finally clause normally owns.
+        this.checking = false;
+        const schedule = options?.schedule !== false;
+        if (schedule && this.running) this._schedule();
         return;
       }
     }

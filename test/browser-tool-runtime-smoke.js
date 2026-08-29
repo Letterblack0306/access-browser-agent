@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { BrowserToolRuntime, normalizeWebUrl } = require('../src/browser/browser-tool-runtime');
+const { BrowserToolRuntime, normalizeWebUrl, hostListed, defaultAllowHosts } = require('../src/browser/browser-tool-runtime');
 
 function createFakeCdp({ rejectContext = false } = {}) {
   const pages = new Map([
@@ -109,6 +109,7 @@ function createFakeCdp({ rejectContext = false } = {}) {
           events.push({type:'navigate',targetId,url});
           return{};
         },
+        captureScreenshot:async()=>{events.push({type:'screenshot',targetId});return{data:'aGVsbG8='};}, // 'hello' base64
       },
       Input:{
         insertText:async({text})=>{page.typed+=String(text);events.push({type:'insertText',targetId,text:String(text)});},
@@ -139,6 +140,7 @@ async function run() {
     cdpFactory:harness.factory,
     getEndpoint:async()=>endpoint,
     isProtectedUrl:url=>String(url).replace(/\/$/u,'')===protectedUrl,
+    allowHosts:['example.com','example.org','example.net','chatgpt.com'],
     readinessTimeoutMs:500,
     pollIntervalMs:25,
     settlementQuietMs:200,
@@ -230,6 +232,7 @@ async function run() {
     cdpFactory:fallbackHarness.factory,
     getEndpoint:async()=> 'http://127.0.0.1:9444',
     requireIsolatedContext:false,
+    allowHosts:['example.com'],
     readinessTimeoutMs:500,
     pollIntervalMs:25,
     settlementQuietMs:50,
@@ -238,6 +241,68 @@ async function run() {
   const fallbackOpened=await fallbackRuntime.open({ url:'https://example.com/fallback' });
   assert.equal(fallbackOpened.ok,true,'optional isolation must fall back when the host rejects context creation');
   assert.equal(fallbackHarness.events.some(event=>event.type==='create'),true);
+
+  // --- Allowlist / denylist mechanism (local, fail-closed, deny-first) ---
+  await assert.rejects(()=>runtime.open({url:'https://someothersite.io/x'}),error=>error?.code==='BROWSER_URL_NOT_ALLOWED','a host outside the allowlist must be rejected before target creation');
+  assert.equal(defaultAllowHosts().includes('chatgpt.com'),true,'default allowlist must include provider hosts');
+  assert.equal(defaultAllowHosts().includes('localhost'),true,'default allowlist must include loopback');
+  assert.equal(hostListed('www.chatgpt.com',['chatgpt.com']),true,'a subdomain must match its allowlisted root');
+  assert.equal(hostListed('evilchatgpt.com',['chatgpt.com']),false,'suffix matching must not allow unrelated sibling domains');
+  assert.equal(hostListed('chatgpt.com.evil.test',['chatgpt.com']),false,'an allowlisted root as a suffix must not match a wider domain');
+
+  const gatedHarness=createFakeCdp();
+  const gatedRuntime=new BrowserToolRuntime({
+    cdpFactory:gatedHarness.factory,
+    getEndpoint:async()=> 'http://127.0.0.1:9555',
+    allowHosts:['example.com'],
+    denyHosts:['malicious.test'],
+    requireIsolatedContext:false,
+    readinessTimeoutMs:500,pollIntervalMs:25,settlementQuietMs:200,settlementTimeoutMs:800,
+  });
+  await assert.rejects(()=>gatedRuntime.open({url:'https://malicious.test/x'}),error=>error?.code==='BROWSER_URL_DENIED','a denied host must be rejected even before allowlist evaluation');
+  await assert.rejects(()=>gatedRuntime.open({url:'https://unlisted.example.org/x'}),error=>error?.code==='BROWSER_URL_NOT_ALLOWED','an unallowlisted host must be rejected');
+  await assert.rejects(()=>gatedRuntime.navigate({targetId:'nope',url:'https://example.com/x'}),error=>error?.code==='BROWSER_TARGET_NOT_OWNED','an unowned target must be rejected even when its URL is allowlisted');
+  const gatedOwned=await gatedRuntime.open({url:'https://example.com/ok'});
+  assert.equal(gatedOwned.ok,true,'an allowlisted host that is not denied must be permitted');
+
+  // --- Lightweight action recorder (privacy-gated) ---
+  const recStore={puts:[]};
+  const recHarness=createFakeCdp();
+  const recRuntime=new BrowserToolRuntime({
+    cdpFactory:recHarness.factory,
+    getEndpoint:async()=> 'http://127.0.0.1:9666',
+    allowHosts:['example.com'],
+    evidenceStore:{
+      put:async(input)=>{recStore.puts.push(input);return{artifactId:'rec-art',capturedAt:new Date().toISOString(),refs:input.screenshotBase64?[{type:'screenshot',path:'/tmp/rec.png',sha256:'abc'}]:[]};},
+    },
+    captureActions:true,
+    captureScreenshots:true,
+    requireIsolatedContext:false,
+    readinessTimeoutMs:500,pollIntervalMs:25,settlementQuietMs:200,settlementTimeoutMs:800,
+  });
+  const recOpened=await recRuntime.open({url:'https://example.com/rec'});
+  assert.equal(recRuntime.actions.length,1,'a governed browser action must be recorded when capture is enabled');
+  assert.equal(recRuntime.actions[0].action,'browser.open');
+  assert.equal(recRuntime.actions[0].url,'https://example.com/rec');
+  assert.equal(recRuntime.actions[0].artifactId,'rec-art');
+  assert.equal(recStore.puts.length,1,'each recorded action must persist evidence through the evidence store');
+  assert.equal(recStore.puts[0].privacy.containsConversationContent,true,'a captured screenshot must carry the conversation-content privacy flag');
+  assert.equal(recStore.puts[0].privacy.screenshotPolicy,'raw_local_opt_in','a captured screenshot must carry the opt-in screenshot policy');
+  await recRuntime.navigate({targetId:recOpened.targetId,url:'https://example.com/two'});
+  assert.equal(recRuntime.actions[1].action,'browser.navigate','navigate actions must be recorded with their action label');
+
+  const offHarness=createFakeCdp();
+  const offRuntime=new BrowserToolRuntime({
+    cdpFactory:offHarness.factory,
+    getEndpoint:async()=> 'http://127.0.0.1:9777',
+    allowHosts:['example.com'],
+    evidenceStore:{put:async()=>({artifactId:'x',capturedAt:new Date().toISOString(),refs:[]})},
+    captureActions:false,
+    requireIsolatedContext:false,
+    readinessTimeoutMs:500,pollIntervalMs:25,settlementQuietMs:200,settlementTimeoutMs:800,
+  });
+  await offRuntime.open({url:'https://example.com/no-rec'});
+  assert.equal(offRuntime.actions.length,0,'recording must be disabled unless capture is explicitly enabled');
 
   console.log('browser-tool-runtime-smoke: PASS');
 }

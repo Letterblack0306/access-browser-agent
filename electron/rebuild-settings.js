@@ -6,6 +6,7 @@
   const normalized=value=>String(value||'').trim();
   const positiveInteger=value=>{const number=Number(value);return Number.isInteger(number)&&number>0?number:null;};
   const setText=(id,value)=>{const node=$(id);if(node)node.textContent=String(value??'');};
+  const escapeHtml=value=>String(value??'').replace(/[&<>"']/gu,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const setBusy=(id,busy)=>{const node=$(id);if(node)node.disabled=busy===true;};
   const catalogState={cline:{values:[],catalog:[]},lm:{values:[],catalog:[]}};
 
@@ -76,7 +77,8 @@
     $('clineTest')?.addEventListener('click', async () => { setBusy('clineTest', true); try { await enhancedClineTest(); } catch(error) { setClineStatus(error.message, 'error'); } finally { setBusy('clineTest', false); } });
     $('clineUse')?.addEventListener('click',async()=>{setBusy('clineUse',true);try{const model=normalized($('clineModel')?.value);if(!model)throw new Error('Select a Cline model first.');const requested={providerKind:'cline',clineProviderId:'cline',clineModel:model};await api.providerConfigure({...requested,persist:false});const observed=await api.providerReadiness();projectReadiness('cline',model,observed);const ready=requireAgentReady(observed);const persisted=await api.savePreferences(requested);if(persisted.providerKind!=='cline'||persisted.clineModel!==model)throw new Error('Cline preference verification failed.');setText('clineAuthStatus',`${model} · active agent provider · ${readinessSummary(ready)}${readinessTimestamp(ready)}`);setBadge('clineAuthBadge','Active','ok');}catch(error){setText('clineAuthStatus',error.message);setBadge('clineAuthBadge','Not ready','bad');}finally{setBusy('clineUse',false);}});
     $('lmDiscover')?.addEventListener('click', async () => { setBusy('lmDiscover', true); try { await enhancedLmDiscover(); } catch(error) { setLmStatus(error.message, 'error'); } finally { setBusy('lmDiscover', false); } });
-    $('lmUse')?.addEventListener('click',async()=>{setBusy('lmUse',true);try{const requested=lmFields();if(!requested.lmStudioBaseUrl||!requested.lmStudioModel)throw new Error('Choose an LM Studio URL and model.');await api.providerConfigure({...requested,persist:false});const observed=await api.providerReadiness();projectReadiness('lm',requested.lmStudioModel,observed);const ready=requireAgentReady(observed);const persisted=await api.savePreferences(requested);for(const key of ['providerKind','lmStudioBaseUrl','lmStudioModel','lmStudioEndpointPolicy'])if(normalized(persisted?.[key])!==normalized(requested[key]))throw new Error(`LM Studio preference verification failed for ${key}.`);setText('lmStatus',`${requested.lmStudioModel} · active agent provider · ${readinessSummary(ready)}${readinessTimestamp(ready)}`);}catch(error){setText('lmStatus',error.message);}finally{setBusy('lmUse',false);}});
+    $('lmTest')?.addEventListener('click', async () => { setBusy('lmTest', true); try { await enhancedLmTest(); } catch(error) { setLmStatus(error.message, 'error'); } finally { setBusy('lmTest', false); } });
+    $('lmUse')?.addEventListener('click',async()=>{setBusy('lmUse',true);try{const requested=lmFields();if(!requested.lmStudioBaseUrl||!requested.lmStudioModel)throw new Error('Choose an LM Studio URL and model.');await api.providerConfigure({...requested,persist:false});const observed=await api.providerReadiness();projectReadiness('lm',requested.lmStudioModel,observed);const ready=requireAgentReady(observed);const persisted=await api.savePreferences(requested);for(const key of ['providerKind','lmStudioBaseUrl','lmStudioModel','lmStudioEndpointPolicy'])if(normalized(persisted?.[key])!==normalized(requested[key]))throw new Error(`LM Studio preference verification failed for ${key}.`);setText('lmStatus',`${requested.lmStudioModel} · active agent provider · ${readinessSummary(ready)}${readinessTimestamp(ready)}`);setBadge('lmProviderBadge','Active','ok');}catch(error){setText('lmStatus',error.message);setBadge('lmProviderBadge','Not ready','bad');}finally{setBusy('lmUse',false);}});
     $('chooseChromeProfile')?.addEventListener('click',async()=>{try{const result=await api.selectChromeProfile($('browserProfilePath')?.value||'');if(!result?.canceled&&$('browserProfilePath'))$('browserProfilePath').value=result.path||'';}catch(error){setText('browserSettingsStatus',error.message);}});
     $('saveBrowserDefaults')?.addEventListener('click',async()=>{setBusy('saveBrowserDefaults',true);try{const requested={browserMode:'managed',browserProfilePath:normalized($('browserProfilePath')?.value),browserExecutable:normalized($('browserExecutable')?.value),browserCdpPort:null};const saved=await api.savePreferences(requested);setText('browserSettingsStatus',saved.browserProfilePath?'Custom managed-Chrome profile override saved.':'Saved. Access-owned managed-Chrome profile and dynamic CDP port will be used automatically.');}catch(error){setText('browserSettingsStatus',error.message);}finally{setBusy('saveBrowserDefaults',false);}});
     $('saveIntegrationSettings')?.addEventListener('click',async()=>{setBusy('saveIntegrationSettings',true);try{const requested={mcpServerCommand:normalized($('mcpServerCommand')?.value)};const saved=await api.savePreferences(requested);if(normalized(saved.mcpServerCommand)!==requested.mcpServerCommand)throw new Error('MCP command persistence verification failed.');setText('mcpDetail','Integration settings saved.');}catch(error){setText('mcpDetail',error.message);}finally{setBusy('saveIntegrationSettings',false);}});
@@ -99,7 +101,8 @@
     if($('clineAuthUrl'))$('clineAuthUrl').hidden=true;
     api.diagnosticEvent?.({source:'settings',category:'browser',action:'saved_chat_loaded',phase:'success',data:{chatUrlConfigured:Boolean(prefs.browserChatUrl),savedTargetPresent:Boolean(prefs.browserProviderTarget)}});
     setText('clineAuthStatus',prefs.clineModel?`${prefs.clineModel} saved · click Discover/Test to verify`:'Not checked');
-    setText('lmStatus',prefs.lmStudioModel?`${prefs.lmStudioModel} saved · click Discover/Use to verify`:'Not checked');
+    setText('lmStatus',prefs.lmStudioModel?`${prefs.lmStudioModel} saved · click Discover/Test/Use to verify`:'Not checked');
+    setBadge('lmProviderBadge',prefs.lmStudioModel?'Saved':'Not checked',prefs.lmStudioModel?'ok':'');
     setText('browserSettingsStatus',prefs.browserProfilePath?'Custom managed-Chrome profile override loaded.':'Access-owned managed-Chrome profile and dynamic CDP port will be used automatically.');
   }
 
@@ -250,9 +253,27 @@ function setLmStatus(message, type) {
   el.className = 'microcopy status-' + (type || 'idle');
 }
 
+function populateModelSelect(selectId, models, selected) {
+  var select = document.getElementById(selectId);
+  if (!select) return;
+  var previous = select.value;
+  select.innerHTML = '<option value="">Select model…</option>';
+  (models || []).forEach(function(model) {
+    var option = document.createElement('option');
+    option.value = model;
+    option.textContent = model;
+    select.appendChild(option);
+  });
+  var desired = selected || previous;
+  if (desired && models.indexOf(desired) !== -1) select.value = desired;
+}
+
 function renderLmModelList(models, catalog) {
   const list = document.getElementById('lmModelList');
-  if (!list) return;
+  if (!list) {
+    populateModelSelect('lmModel', models, lmStudioState.selectedModel);
+    return;
+  }
   if (!models || models.length === 0) {
     list.innerHTML = '<div class="empty-state compact-empty">No models found. Is LM Studio running?</div>';
     return;
@@ -287,6 +308,7 @@ async function enhancedLmDiscover() {
   var url = document.getElementById('lmBaseUrl').value.trim();
   if (!url) { setLmStatus('Please enter a Base URL.', 'error'); return; }
   setLmStatus('Discovering models…', 'busy');
+  setBadge('lmProviderBadge', 'Discovering', '');
   lmStudioState.status = 'discovering';
   try {
     var result = await api.providerConfigure({
@@ -304,10 +326,38 @@ async function enhancedLmDiscover() {
     }
     renderLmModelList(result.models || [], result.modelCatalog || []);
     setLmStatus((result.models ? result.models.length : 0) + ' models found.', 'ok');
+    setBadge('lmProviderBadge', (result.models ? result.models.length : 0) + ' models', 'ok');
   } catch (error) {
     lmStudioState.status = 'error';
     lmStudioState.error = error.message;
     setLmStatus('Error: ' + error.message, 'error');
+    setBadge('lmProviderBadge', 'Unreachable', 'bad');
+  }
+}
+
+async function enhancedLmTest() {
+  var url = document.getElementById('lmBaseUrl').value.trim();
+  var modelSelect = document.getElementById('lmModel');
+  var model = modelSelect ? modelSelect.value : null;
+  if (!model) model = lmStudioState.selectedModel;
+  if (!url) { setLmStatus('Enter a Base URL first.', 'error'); return; }
+  if (!model) { setLmStatus('Select a model first.', 'error'); return; }
+  setLmStatus('Testing ' + model + '…', 'busy');
+  setBadge('lmProviderBadge', 'Testing', '');
+  try {
+    const requested = { providerKind: 'lm-studio', lmStudioBaseUrl: url, lmStudioModel: model };
+    var result = await api.providerConfigure({ ...requested, discoverOnly: true, probeReadiness: true, persist: false });
+    if (result && result.error) throw new Error(result.error);
+    const observed = await api.providerReadiness();
+    projectReadiness('lm', requested.lmStudioModel, observed);
+    const ready = requireAgentReady(observed);
+    lmStudioState.agentReady = ready.agentReady === true;
+    setLmStatus(model + ' is Agent Ready ✅ · ' + readinessSummary(ready) + readinessTimestamp(ready), 'ok');
+    setBadge('lmProviderBadge', 'Agent Ready', 'ok');
+    renderLmModelList(lmStudioState.models, catalogState.lm ? catalogState.lm.catalog : null);
+  } catch (error) {
+    setLmStatus('Test failed: ' + error.message, 'error');
+    setBadge('lmProviderBadge', 'Not ready', 'bad');
   }
 }
 
@@ -319,6 +369,7 @@ async function enhancedLmUse() {
   if (!url) { setLmStatus('Enter a Base URL first.', 'error'); return; }
   if (!model) { setLmStatus('Select a model first.', 'error'); return; }
   setLmStatus('Testing ' + model + '…', 'busy');
+  setBadge('lmProviderBadge', 'Testing', '');
   try {
     const requested = { providerKind: 'lm-studio', lmStudioBaseUrl: url, lmStudioModel: model };
     var result = await api.providerConfigure({ ...requested, discoverOnly: true, probeReadiness: true, persist: false });
@@ -328,9 +379,11 @@ async function enhancedLmUse() {
     await api.providerConfigure({ ...requested, persist: true });
     await api.savePreferences({ lmStudioBaseUrl: url, lmStudioModel: model });
     setLmStatus(model + ' is Agent Ready ✅ Active', 'ok');
+    setBadge('lmProviderBadge', 'Active', 'ok');
     renderLmModelList(lmStudioState.models, catalogState.lm ? catalogState.lm.catalog : null);
   } catch (error) {
     setLmStatus('Error: ' + error.message, 'error');
+    setBadge('lmProviderBadge', 'Not ready', 'bad');
   }
 }
 
@@ -346,7 +399,10 @@ function setClineStatus(message, type) {
 
 function renderClineModelList(models, catalog) {
   var list = document.getElementById('clineModelList');
-  if (!list) return;
+  if (!list) {
+    populateModelSelect('clineModel', models, clineState.selectedModel);
+    return;
+  }
   if (!models || models.length === 0) {
     list.innerHTML = '<div class="empty-state compact-empty">No models found. Sign in and discover models.</div>';
     return;

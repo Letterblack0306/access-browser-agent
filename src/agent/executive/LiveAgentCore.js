@@ -141,6 +141,16 @@ class LiveAgentCore {
     else if (parentSignal && typeof parentSignal.addEventListener === 'function') parentSignal.addEventListener('abort', abortFromParent, { once:true });
     this._aborters.set(sessionId, aborter);
 
+    // FIX #P0: Wall-clock timeout enforcement. Guarantees termination even if
+    // the provider hangs or the tool loop stalls beyond the budget. Default 5
+    // minutes per step; configurable via stepContext.timeoutMs.
+    const timeoutMs = Number(stepContext.timeoutMs) || 300_000;
+    const timeoutTimer = setTimeout(() => {
+      const error = new Error(`Agent step timed out after ${timeoutMs} ms.`);
+      error.code = 'AGENT_RUN_TIMEOUT';
+      aborter.abort(error);
+    }, timeoutMs);
+
     const emitExecutionEvent = typeof stepContext.emitExecutionEvent === 'function' ? stepContext.emitExecutionEvent : async () => {};
     const emitAgentEvent = typeof stepContext.emitAgentEvent === 'function' ? stepContext.emitAgentEvent : async () => {};
     let toolCalls = 0;
@@ -161,6 +171,12 @@ class LiveAgentCore {
     try {
       while (toolCalls < this.maxToolCalls) {
         if (aborter.signal.aborted) {
+          // FIX #P0: Distinguish timeout abort from user stop so the correct
+          // terminal status propagates to AgentExecutive.
+          const abortReason = aborter.signal.reason;
+          if (abortReason?.code === 'AGENT_RUN_TIMEOUT') {
+            return { status:'timed_out', reason:String(abortReason.message || 'Agent step timed out.'), summary:'TIMED OUT: agent step exceeded the wall-clock time limit.', evidence:runtimeEvidence, consumeInstructions:false };
+          }
           return { status:'stopped', reason:'Stopped by user.', summary:'Stopped by user.', evidence:runtimeEvidence, consumeInstructions:false };
         }
 
@@ -378,6 +394,7 @@ class LiveAgentCore {
         consumeInstructions:false,
       };
     } finally {
+      clearTimeout(timeoutTimer);
       this._aborters.delete(sessionId);
       if (parentSignal && typeof parentSignal.removeEventListener === 'function') parentSignal.removeEventListener('abort', abortFromParent);
     }

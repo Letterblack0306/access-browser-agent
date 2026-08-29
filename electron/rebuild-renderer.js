@@ -84,7 +84,7 @@
     text('summaryOperation', fmt(state.operation.state));
     text('summaryDelivery', fmt(state.browserDelivery.state));
     text('runtimeDetail', `${fmt(state.runtime.state)}${state.runtime.detail ? ` — ${state.runtime.detail}` : ''}`);
-    text('providerDetail', `${fmt(state.provider.state)}${state.provider.detail ? ` — ${state.provider.detail}` : ''}`);
+    text('providerDetail', `${fmt(state.provider.state)}${state.provider.detail ? ` — ${state.provider.detail}` : ''}${latestSnapshot?.provider?.agentReadiness?.model ? ` · ${latestSnapshot.provider.agentReadiness.model}` : ''}`);
     text('agentDetail', fmt(state.agentSession.state));
     text('turnDetail', state.agentSession.turnId || '—');
     text('targetDetail', state.browserTarget.target ? `${state.browserTarget.target.title || '(untitled)'} · ${state.browserTarget.target.url || ''}` : 'Not selected');

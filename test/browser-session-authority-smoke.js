@@ -50,7 +50,7 @@ const {BrowserSessionAuthority}=require('../electron/browser-session-authority')
     releaseBootstrapTarget(targetId){if(managedState.bootstrapTargetId!==String(targetId))return false;managedState.bootstrapTargetId=null;managedState.bootstrapUrl=null;return true;},
     stop:async()=>({lifecycle:'stopped',endpoint:null,generation:2}),
   };
-  const authority=new BrowserSessionAuthority({managedChrome,channel,relay});
+  const authority=new BrowserSessionAuthority({managedChrome,channel,relay,allowHosts:['example.com']});
   const generalState={lifecycle:'ready',endpoint:'http://127.0.0.1:7440',generation:1};
   const generalManagedChrome={
     status:()=>({...generalState}),
