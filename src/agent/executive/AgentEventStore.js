@@ -79,9 +79,26 @@ class AgentEventStore {
       await fs.appendFile(this.eventsPath, `${JSON.stringify(event)}\n`, 'utf8');
       return event;
     };
-    const pending = this._writeQueue.then(write, write);
+    // FIX: Error propagation. The previous implementation reassigned
+    // _writeQueue to a .catch() that returned undefined, which caused
+    // subsequent writes to be chained onto a fulfilled promise — so a
+    // failed write was silently absorbed and the next write appeared OK
+    // even though its event was never persisted. Now:
+    //   1. The current caller receives the rejected pending promise and
+    //      observes the error.
+    //   2. The write queue head becomes a rejected promise so any later
+    //      enqueue (which chains via .then(write, write)) sees the error.
+    //      The safeWrite wrapper detects that case and rejects immediately,
+    //      preventing a corrupted event from being written after a failure.
+    //   3. Debug logging is preserved.
+    const safeWrite = async (arg) => {
+      if (arg instanceof Error) throw arg;
+      return write();
+    };
+    const pending = this._writeQueue.then(safeWrite, safeWrite);
     this._writeQueue = pending.catch(error => {
       console.error('AgentEventStore append write failed:', error);
+      throw error; // keep the queue head rejected so downstream sees the failure
     });
     return pending;
   }

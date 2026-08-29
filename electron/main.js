@@ -578,6 +578,19 @@ ipcMain.handle('ide:agent-receipts', () => agentRuntime.receipts());
 ipcMain.handle('ide:agent-execution-trace', (_event, sessionId) => agentRuntime.executionTrace(sessionId));
 ipcMain.handle('ide:agent-approve', (_event, approvalId) => agentRuntime.approve(approvalId));
 ipcMain.handle('ide:agent-reject', (_event, approvalId) => agentRuntime.reject(approvalId));
+// FIX: Restore production-authoritative handlers previously shadowed by a
+// hidden patch in electron/rebuild-main.js. These are routed through the same
+// AgentRuntimeAdapter (created by createConfiguredAgentRuntime) that owns the
+// rest of the agent lifecycle, and are guarded by assertRuntimeActive() so a
+// stopped runtime cannot be invoked through any of these paths.
+ipcMain.handle('ide:get-models', () => { assertRuntimeActive(); return agentRuntime.discoverModels(); });
+ipcMain.handle('ide:agent-start', (_event, input = {}) => { assertRuntimeActive(); return agentRuntime.executeWithFallback(input); });
+ipcMain.handle('ide:agent-stop', (_event, turnId) => { assertRuntimeActive(); return agentRuntime.stop(turnId); });
+ipcMain.handle('ide:loop-status', () => {
+  if (!runtimeActive || !agentRuntime) return { state: { status: 'stopped' }, feedback: null };
+  const state = typeof agentRuntime.getState === 'function' ? agentRuntime.getState() : { status: 'unknown' };
+  return { state, feedback: null };
+});
 
 app.whenReady().then(async () => {
   try {

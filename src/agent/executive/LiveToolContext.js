@@ -196,6 +196,45 @@ function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, term
       operatingGuidance:'Use only for missing conversational context. Treat the returned messages as context for reasoning, not as a second command protocol or semantic state machine.',
       failureModes:['no selected Browser Loop conversation','managed browser unavailable','conversation identity changed','provider adapter unavailable'],
     },
+    {
+      ...tool(
+        'restoreCheckpoint',
+        'Revert all workspace files to the state recorded at a specific checkpoint. The checkpoint must have been created by a prior mutation tool call (applyPatch, writeFile, createFile, runCommand). WARNING: this restores FILES ONLY. It does not truncate the agent task session or event history. Use listCheckpoints first to find available checkpoint IDs.',
+        { type:'object', properties:{ checkpointId:{type:'string',description:'The checkpoint ID returned by a prior listCheckpoints call or a mutation tool result.'} }, required:['checkpointId'] },
+        ACTION_KINDS.FILE_WRITE,
+        async (_ctx, args) => {
+          try {
+            const result = await checkpoint.restore({ checkpointId: String(args.checkpointId || '').trim() });
+            return result;
+          } catch (err) {
+            return { ok:false, code:'CHECKPOINT_RESTORE_FAILED', error: String(err?.message || err) };
+          }
+        }
+      ),
+      category:'governance',
+      operatingGuidance: 'Run listCheckpoints before this tool to see available IDs. Each checkpoint was created after a mutation tool call (applyPatch, writeFile, createFile, runCommand).',
+      failureModes:['checkpoint not found','git restore failed','shadow repo not initialized','workspace root not accessible'],
+    },
+    {
+      ...tool(
+        'listCheckpoints',
+        'List all available workspace checkpoints in the shadow git repository, newest first. Each entry includes a checkpointId, stepId (agent turn), toolName that triggered the checkpoint, and the ISO-8601 timestamp.',
+        { type:'object', properties:{} },
+        ACTION_KINDS.WORKSPACE_INSPECT,
+        async (_ctx, _args) => {
+          try {
+            const result = await checkpoint.list();
+            return result;
+          } catch (err) {
+            return { ok:false, code:'CHECKPOINT_LIST_FAILED', error: String(err?.message || err) };
+          }
+        }
+      ),
+      category:'governance',
+      readOnly:true,
+      operatingGuidance: 'Use the checkpointId from this list as input to restoreCheckpoint.',
+      failureModes:['shadow repo not initialized','no checkpoints exist','git log failed'],
+    },
   ];
 
   const browserTool = (name, description, schema, method, readOnly = false) => ({

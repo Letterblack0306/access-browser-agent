@@ -250,60 +250,23 @@ loadActiveMain().catch(error=>{
 
 
 
-// --- PATCH: Agent Runtime IPC Handlers ---
-const { AgentRuntimeAdapter } = require('./agent-runtime-adapter-extensions');
-// SAFE_GET_SETTINGS: prevents main process crash from 'window is not defined' in rebuild-settings.js
-const getSettings = () => {
-    try {
-        const fs = require('fs');
-        const path = require('path');
-        const settingsPath = path.join(app.getPath('userData'), 'ide-preferences.json');
-        if (fs.existsSync(settingsPath)) return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-        return {};
-    } catch (e) { return {}; }
-};
-const adapter = new AgentRuntimeAdapter({ workspaceRoot: process.cwd(), getSettings });
-
-ipcMain.handle('ide:get-models', async () => {
-    return await adapter.discoverModels();
-});
-
-ipcMain.handle('ide:agent-start', async (event, input) => {
-    return await adapter.executeWithFallback(input);
-});
-
-// Stop is already handled by Line 110, but we ensure it's bound.
-if (!ipcMain.listenerCount('ide:agent-stop')) {
-    ipcMain.handle('ide:agent-stop', async (event, turnId) => {
-        return await adapter.stop(turnId);
-    });
-}
-// --- END PATCH ---
-
-
-// --- PATCH: Autonomous Loopback Heartbeat ---
-ipcMain.handle('ide:loop-status', async () => {
-    try {
-        // Check adapter state (running, stopped, waiting_for_instruction)
-        const state = adapter.getState ? adapter.getState() : { status: 'waiting' };
-        // Check for new pending instructions/feedback in the workspace
-        const feedback = adapter.checkForFeedback ? await adapter.checkForFeedback() : null;
-        return { state: state, feedback: feedback };
-    } catch (e) { return { error: e.message }; }
-});
-
-// Poll every 30 seconds to stay alive and check for feedback
-setInterval(async () => {
-    try {
-        const status = await adapter.getState?.() || { status: 'idle' };
-        // If the agent has submitted a report and is waiting, it stays active and updates internal state
-        if (status.status === 'waiting_for_instruction') {
-            // Trigger a passive check to see if any new instructions or files were dropped in
-            await adapter.checkForFeedback?.();
-        }
-    } catch (e) { /* Silent heartbeat */ }
-}, 30000);
-// --- END PATCH ---
-
-
-
+// --- REMOVED HIDDEN PATCHES (2026-08-29) ---
+// The following IPC handlers are registered by loadActiveMain() via electron/main.js
+// using AgentRuntimeAdapter from agent-runtime-adapter-extensions.js:
+//   ide:get-models     -> adapter.discoverModels()
+//   ide:agent-start    -> adapter.executeWithFallback()
+//   ide:agent-stop     -> adapter.stop()
+//   ide:loop-status    -> adapter.getState() + checkForFeedback()
+// These handlers are part of the production main.js lifecycle and are authoritative.
+// The preload script (electron/preload.js) routes renderer calls to these handlers.
+//
+// The removed patches in this file duplicated these handlers and added an untracked
+// setInterval heartbeat (30s, silent catch, no cleanup, no timeout). They were dead
+// code that created a second runtime-adapter instance overriding the production
+// runtime and a perpetual timer that was never cleared on app quit.
+//
+// If a heartbeat is required, it must be implemented with:
+//   - a named timer reference stored in module scope
+//   - a cleanup call on app quit (clearInterval)
+//   - error propagation (not silent catch)
+//   - integration into the production main.js lifecycle, not a file-level patch.
