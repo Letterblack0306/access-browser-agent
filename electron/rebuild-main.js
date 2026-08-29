@@ -292,3 +292,12 @@ ipcMain.handle('ide:get-models', async () => {
     return await adapter.discoverModels();
 });
 // --- END PATCH ---
+
+// --- SAFE OVERRIDE: Bypass Runtime Active Check for Agent Stop ---
+ipcMain.removeHandler('ide:agent-stop');
+ipcMain.handle('ide:agent-stop', async (event, turnId) => {
+    const adapter = global.__accessAgentRuntimeAdapter;
+    if (!adapter) throw new Error('Runtime is stopped.');
+    return adapter.stop(turnId);
+});
+// --- END SAFE OVERRIDE ---

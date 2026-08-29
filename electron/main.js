@@ -11,7 +11,6 @@ const { LocalRuntimeDiagnostics } = require('../src/system/local-runtime-diagnos
 const { SkillCatalog } = require('../src/system/skill-catalog');
 const { WorkspaceGitStatus } = require('../src/system/workspace-git-status');
 const { validateWorkspacePath } = require('../src/system/workspace-path-guard');
-const { parseWorkbenchLayout } = require('../src/system/workbench-layout');
 const { AgentRuntimeAdapter } = require('./agent-runtime-adapter-extensions');
 const { PtyTerminalManager } = require('./pty-terminal-manager');
 const { McpClient } = require('../src/system/mcp-client');
@@ -28,11 +27,7 @@ const { BrowserEvidenceStore, defaultBrowserEvidenceRoot } = require('../src/bro
 
 const bridgePort = Number(process.env.ACCESS_AGENT_IDE_BRIDGE_PORT || 7726);
 const diagnostics = new LocalRuntimeDiagnostics();
-const terminalManager = new PtyTerminalManager();
-const workbenchLayout = parseWorkbenchLayout(
-  fs.readFileSync(path.join(__dirname, 'workbench.layout.json'), 'utf8'),
-);
-const skills = new SkillCatalog(
+const terminalManager = new PtyTerminalManager();const skills = new SkillCatalog(
   process.env.ACCESS_AGENT_SKILLS_ROOT || path.join(__dirname, '..', 'skills'),
 );
 
@@ -374,7 +369,6 @@ ipcMain.handle('ide:status', runtimeStatus);
 ipcMain.handle('ide:runtime-start', startOwnedRuntime);
 ipcMain.handle('ide:runtime-stop', stopOwnedRuntime);
 ipcMain.handle('ide:runtime-restart', restartOwnedRuntime);
-ipcMain.handle('ide:workbench-layout', () => workbenchLayout);
 ipcMain.handle('ide:select-chrome-profile', async (_event, currentPath = '') => {
   const requested = String(currentPath || '').trim();
   const result = await dialog.showOpenDialog(windowRef, { title: 'Choose Chrome profile folder', defaultPath: requested && fs.existsSync(requested) ? requested : undefined, properties: ['openDirectory'] });
@@ -585,7 +579,7 @@ ipcMain.handle('ide:agent-reject', (_event, approvalId) => agentRuntime.reject(a
 // stopped runtime cannot be invoked through any of these paths.
 // ide:get-models is handled globally in rebuild-main.js to bypass runtime gate
 // ide:agent-start is handled globally in rebuild-main.js to bypass runtime gate
-ipcMain.handle('ide:agent-stop', (_event, turnId) => { assertRuntimeActive(); return agentRuntime.stop(turnId); });
+// ide:agent-stop is handled globally in rebuild-main.js to bypass runtime gate
 ipcMain.handle('ide:loop-status', () => {
   if (!runtimeActive || !agentRuntime) return { state: { status: 'stopped' }, feedback: null };
   const state = typeof agentRuntime.getState === 'function' ? agentRuntime.getState() : { status: 'unknown' };
@@ -618,8 +612,8 @@ app.whenReady().then(async () => {
       getWorkspaceRoot: () => workspaceRoot,
       getAgentRuntime: () => agentRuntime,
       getWindow: () => windowRef,
-      // FIX #P5: Runtime authorization gate — a stopped runtime must not be
-      // invoked through the relay → task-state bridge path.
+      // FIX #P5: Runtime authorization gate Ã¢â‚¬â€ a stopped runtime must not be
+      // invoked through the relay Ã¢â€ â€™ task-state bridge path.
       getRuntimeActive: () => runtimeActive,
     });
     taskStateRouterBridge.registerIpc(ipcMain);
@@ -666,6 +660,7 @@ app.on('before-quit', () => {
   if (workspaceSync) workspaceSync.stop();
   if (bridgeServer) bridgeServer.close();
 });
+
 
 
 

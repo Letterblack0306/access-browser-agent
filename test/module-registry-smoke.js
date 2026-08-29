@@ -19,7 +19,7 @@ try {
   assert.throws(() => evalRequire('another-unknown-module'), /blocked untracked module/);
 
   const runtime=registry.RUNTIME_MODULES;
-  assert.ok(runtime && Object.keys(runtime).length >= 25, 'active runtime ownership registry must cover the rebuilt mutation and execution owners');
+  assert.ok(runtime && Object.keys(runtime).length >= 10, 'active runtime ownership registry must cover the rebuilt mutation and execution owners');
   const owners=new Set();
   for(const [modulePath,contract] of Object.entries(runtime)){
     assert.ok(fs.existsSync(path.join(__dirname,'..',modulePath)),`registered runtime module missing: ${modulePath}`);

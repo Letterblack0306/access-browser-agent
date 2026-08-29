@@ -15,7 +15,6 @@ const QUIET_SUCCESS_IPC = new Set([
   'ide:git-status',
   'ide:terminal-write',
   'ide:terminal-resize',
-  'ide:workbench-layout',
   'ide:preferences',
 ]);
 
@@ -60,7 +59,6 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   getModels: () => invoke('ide:get-models'),
   getStatus: () => invoke('ide:loop-status'),
   runtimeRestart: () => invoke('ide:runtime-restart'),
-  workbenchLayout: () => invoke('ide:workbench-layout'),
   preferences: () => invoke('ide:preferences'),
   defaultSystemPrompt: () => invoke('ide:default-system-prompt'),
   autoPlanStatus: () => invoke('ide:auto-plan-status'),
