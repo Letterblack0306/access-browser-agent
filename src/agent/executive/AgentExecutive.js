@@ -7,9 +7,12 @@ const { projectSession, isTerminalStatus } = require('./AgentSessionState');
 
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 500;
+// FIX #P4: Sensible default wall-clock limit for a single agent run.
+// Previously no default existed and an unbounded run was possible.
+const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 class AgentExecutive {
-  constructor({ workspaceRoot, stateRoot, sessionId, stepRunner, eventStore, onEvent, onState, maxRetries = DEFAULT_MAX_RETRIES, retryDelayMs = DEFAULT_RETRY_DELAY_MS } = {}) {
+  constructor({ workspaceRoot, stateRoot, sessionId, stepRunner, eventStore, onEvent, onState, maxRetries = DEFAULT_MAX_RETRIES, retryDelayMs = DEFAULT_RETRY_DELAY_MS, runTimeoutMs = DEFAULT_RUN_TIMEOUT_MS } = {}) {
     if (!workspaceRoot) throw new Error('workspaceRoot is required');
     if (!sessionId) throw new Error('sessionId is required');
     if (typeof stepRunner !== 'function') throw new Error('stepRunner is required');
@@ -21,6 +24,7 @@ class AgentExecutive {
     this.onState = typeof onState === 'function' ? onState : () => {};
     this.maxRetries = Math.max(0, Number(maxRetries) || 0);
     this.retryDelayMs = Math.max(0, Number(retryDelayMs) || 0);
+    this.runTimeoutMs = Math.max(0, Number(runTimeoutMs) || 0);
     this.events = [];
     this.state = null;
     this.skillSeed = null;
@@ -29,6 +33,7 @@ class AgentExecutive {
     this._attemptController = null;
     this._stopRequested = false;
     this._cancelRequested = false;
+    this._runDeadline = null;
   }
 
   getEvents() { return cloneJson(this.events); }
@@ -72,9 +77,10 @@ class AgentExecutive {
     const text = String(input.text || input.message || input.instruction || '').trim();
     if (!text) throw new Error('instruction text is required');
     const instructionId = String(input.instructionId || `instruction-${randomUUID()}`);
+    if (!this.state.objective || this.state.completion) {
+      await this._append('objective.revised', { objective: text, reason: this.state.completion ? 'next_instruction' : 'first_instruction' });
+    }
     const event = await this._append('user.message', { instructionId, text, source: String(input.source || 'unknown'), metadata: input.metadata || {} });
-    if (!this.state.objective) await this._append('objective.revised', { objective: text, reason: 'first_instruction' });
-    else if (this.state.completion) await this._append('objective.revised', { objective: text, reason: 'next_instruction' });
     await this._updateSkillSeed(input.skills);
     const runPromise = this.state.status === 'stopped' ? null : this.run();
     return { ok: true, sessionId: this.sessionId, instructionId, eventId: event.eventId, status: this.state.status, pending: true, runPromise };
@@ -82,7 +88,10 @@ class AgentExecutive {
 
   run() {
     if (this._runPromise) return this._runPromise;
-    this._runPromise = this._runLoop().finally(() => { this._runPromise = null; });
+    // FIX #P4: Set a wall-clock deadline for this run so the loop cannot
+    // execute indefinitely. A zero/negative runTimeoutMs disables the check.
+    this._runDeadline = this.runTimeoutMs > 0 ? Date.now() + this.runTimeoutMs : null;
+    this._runPromise = this._runLoop().finally(() => { this._runPromise = null; this._runDeadline = null; });
     return this._runPromise;
   }
 
@@ -91,10 +100,10 @@ class AgentExecutive {
     if (isTerminalStatus(this.state.status) || this.state.status === 'stopped') return this.getState();
     if (this._stopRequested) return this.getState();
     this._stopRequested = true;
-    await this._append('session.stop_requested', { reason });
+    await this._appendTerminal('session.stop_requested', { reason });
     this._abortCurrentAttempt(reason);
     if (this._runPromise) await this._runPromise.catch(() => {});
-    else { await this._append('session.stopped', { reason }); await this._checkpoint('stopped'); }
+    else { await this._appendTerminal('session.stopped', { reason }); await this._checkpoint('stopped'); }
     return this.getState();
   }
 
@@ -113,10 +122,10 @@ class AgentExecutive {
     if (this.state.status === 'cancelled') return this.getState();
     if (this._cancelRequested) return this.getState();
     this._cancelRequested = true;
-    await this._append('session.cancel_requested', { reason });
+    await this._appendTerminal('session.cancel_requested', { reason });
     this._abortCurrentAttempt(reason);
     if (this._runPromise) await this._runPromise.catch(() => {});
-    if (this.state.status !== 'cancelled') { await this._append('session.cancelled', { reason }); await this._checkpoint('cancelled'); }
+    if (this.state.status !== 'cancelled') { await this._appendTerminal('session.cancelled', { reason }); await this._checkpoint('cancelled'); }
     return this.getState();
   }
 
@@ -132,9 +141,18 @@ class AgentExecutive {
     const timeoutError = new Error(text);
     timeoutError.code = 'AGENT_RUN_TIMEOUT';
     this._abortCurrentAttempt(timeoutError);
-    if (!isTerminalStatus(this.state.status)) {
-      await this._append('objective.timed_out', { summary: text, evidence: [], reason: text });
-      await this._checkpoint('timed_out');
+    // FIX #F1: The terminal check above and the append below are not atomic
+    // against the serialized write queue. If a competing terminal (e.g.
+    // objective.completed) wins the race, the rejected timed_out append must
+    // not reject this method or poison the write queue. The durable log is
+    // the single authority; accept its terminal state instead.
+    try {
+      if (!isTerminalStatus(this.state.status)) {
+        await this._appendTerminal('objective.timed_out', { summary: text, evidence: [], reason: text });
+        await this._checkpoint('timed_out');
+      }
+    } catch (error) {
+      if (!(await this._absorbLostTerminalRace(error))) throw error;
     }
     return this.getState();
   }
@@ -186,8 +204,22 @@ class AgentExecutive {
     await this._append('session.running', {});
 
     while (true) {
-      if (this._cancelRequested) { await this._append('session.cancelled', { reason: 'Cancelled during execution.' }); await this._checkpoint('cancelled'); break; }
-      if (this._stopRequested) { await this._append('session.stopped', { reason: 'Stopped at an execution boundary.' }); await this._checkpoint('stopped'); break; }
+      if (this._cancelRequested) { await this._appendTerminal('session.cancelled', { reason: 'Cancelled during execution.' }); await this._checkpoint('cancelled'); break; }
+      if (this._stopRequested) { await this._appendTerminal('session.stopped', { reason: 'Stopped at an execution boundary.' }); await this._checkpoint('stopped'); break; }
+      // FIX #P4: Enforce the wall-clock run deadline at the top of each
+      // iteration. If exceeded, use the existing durable forceTimeout path
+      // so the canonical objective.timed_out event is persisted through the
+      // single write path.
+      if (this._runDeadline !== null && Date.now() >= this._runDeadline) {
+        // FIX #F1: A losing timeout race must halt the loop deterministically
+        // instead of rejecting _runPromise with an unhandled rejection.
+        try {
+          await this.forceTimeout(`Agent run exceeded the configured wall-clock limit of ${this.runTimeoutMs}ms.`);
+        } catch (error) {
+          if (!isTerminalStatus(this.state?.status)) throw error;
+        }
+        break;
+      }
       if (isTerminalStatus(this.state.status)) break;
 
       const stepId = `step-${randomUUID()}`;
@@ -203,22 +235,29 @@ class AgentExecutive {
         await this._append('step.started', { stepId, turnId, action: { kind: 'reason_and_act', attempt } });
         try {
           result = await this.stepRunner({ ...stepContext, turnId, attempt, signal: this._attemptController.signal, emitExecutionEvent: event => this._appendExecutionEvent(event), emitAgentEvent: (phase, data) => this._append(phase, data) });
-          await this._append('step.observed', { stepId, observation: result?.observation ?? result ?? null });
-          await this._append('step.completed', { stepId, attempt });
+          // FIX #F1: A terminal may have landed while the step ran; its
+          // outcome events cannot follow a durable terminal. Absorb the lost
+          // race instead of rejecting the run loop.
+          await this._appendStepOutcome('step.observed', { stepId, observation: result?.observation ?? result ?? null });
+          await this._appendStepOutcome('step.completed', { stepId, attempt });
           break;
         } catch (error) {
           const aborted = this._attemptController.signal.aborted;
           const timedOut = isRunTimeoutError(error);
           const retryable = isRetryableError(error);
-          await this._append('step.failed', { stepId, attempt, aborted, timedOut, retryable, error: serializeError(error) });
+          await this._appendStepOutcome('step.failed', { stepId, attempt, aborted, timedOut, retryable, error: serializeError(error) });
           if (aborted || timedOut || !retryable || attempt >= this.maxRetries) { result = { status: timedOut ? 'timed_out' : aborted ? 'interrupted' : 'waiting_for_dependency', reason: error?.message || String(error), retryable }; break; }
           attempt += 1;
-          await this._append('step.retrying', { stepId, attempt, error: serializeError(error) });
+          await this._appendStepOutcome('step.retrying', { stepId, attempt, error: serializeError(error) });
           await delay(this.retryDelayMs);
         } finally { this._attemptController = null; }
       }
 
       if (this._cancelRequested || this._stopRequested) continue;
+      // FIX #F1: An external authority may have persisted a terminal while the
+      // step was running. Halt before recording decisions/instructions so no
+      // event lands after the durable terminal.
+      if (isTerminalStatus(this.state.status)) break;
       const decision = normalizeStepResult(result);
       if (decision.decision) await this._append('decision.recorded', { decisionId: `decision-${randomUUID()}`, kind: decision.decision, reason: decision.reason, instructionIds: consumedInstructionIds });
       if (decision.consumeInstructions && consumedInstructionIds.length) await this._append('instruction.processed', { instructionIds: consumedInstructionIds });
@@ -230,7 +269,7 @@ class AgentExecutive {
       if (isTerminalStatus(this.state.status)) break;
 
       if (decision.status === 'completed') {
-        await this._append('objective.completed', { summary: decision.summary, evidence: decision.evidence });
+        await this._appendTerminal('objective.completed', { summary: decision.summary, evidence: decision.evidence });
         await this._checkpoint('objective_completed');
         break;
       }
@@ -238,18 +277,18 @@ class AgentExecutive {
       if (decision.status === 'waiting_for_user') { await this._append('user.waiting', { question: decision.question || decision.summary || decision.reason, reason: decision.reason || 'Awaiting user input before continuing.' }); break; }
       if (decision.status === 'approval') { await this._append('approval.pending', { approvalId: decision.approvalId, action: decision.action, reason: decision.reason }); break; }
       if (decision.status === 'waiting_for_dependency') { await this._append('dependency.waiting', { dependency: decision.dependency, reason: decision.reason, retryAt: decision.retryAt }); break; }
-      if (decision.status === 'stopped') { await this._append('session.stopped', { reason: decision.reason || 'Agent chose to stop.' }); await this._checkpoint('stopped'); break; }
+      if (decision.status === 'stopped') { await this._appendTerminal('session.stopped', { reason: decision.reason || 'Agent chose to stop.' }); await this._checkpoint('stopped'); break; }
       // FIX #P1d: Cline-style result states (failed, blocked, timed_out) must
       // terminate the run loop with the correct terminal status instead of
       // falling through to waiting_for_input.
-      if (decision.status === 'failed') { await this._append('objective.failed', { summary: decision.summary, evidence: decision.evidence, reason: decision.reason || 'Agent step failed.' }); await this._checkpoint('failed'); break; }
-      if (decision.status === 'blocked') { await this._append('objective.blocked', { summary: decision.summary, evidence: decision.evidence, dependency: decision.dependency || 'unresolved', reason: decision.reason || 'Agent is blocked.', retryAt: decision.retryAt }); await this._checkpoint('blocked'); break; }
-      if (decision.status === 'timed_out') { await this._append('objective.timed_out', { summary: decision.summary, evidence: decision.evidence, reason: decision.reason || 'Agent step timed out.' }); await this._checkpoint('timed_out'); break; }
+      if (decision.status === 'failed') { await this._appendTerminal('objective.failed', { summary: decision.summary, evidence: decision.evidence, reason: decision.reason || 'Agent step failed.' }); await this._checkpoint('failed'); break; }
+      if (decision.status === 'blocked') { await this._appendTerminal('objective.blocked', { summary: decision.summary, evidence: decision.evidence, dependency: decision.dependency || 'unresolved', reason: decision.reason || 'Agent is blocked.', retryAt: decision.retryAt }); await this._checkpoint('blocked'); break; }
+      if (decision.status === 'timed_out') { await this._appendTerminal('objective.timed_out', { summary: decision.summary, evidence: decision.evidence, reason: decision.reason || 'Agent step timed out.' }); await this._checkpoint('timed_out'); break; }
       // FIX #P1: Explicit handling for the 'interrupted' status. Previously this
       // was an unclassified internal signal that relied on the stop/cancel flag
       // check above to short-circuit. Now it has a deterministic terminal path
       // even if the flags were somehow cleared between abort and decision.
-      if (decision.status === 'interrupted') { await this._append('session.stopped', { reason: decision.reason || 'Execution was interrupted.' }); await this._checkpoint('interrupted'); break; }
+      if (decision.status === 'interrupted') { await this._appendTerminal('session.stopped', { reason: decision.reason || 'Execution was interrupted.' }); await this._checkpoint('interrupted'); break; }
       if (this.state.pendingInstructions.length === 0 && decision.continue !== true) { await this._append('input.waiting', { reason: decision.reason || 'No unresolved instruction remains.' }); break; }
     }
     return this.getState();
@@ -261,6 +300,44 @@ class AgentExecutive {
   }
 
   async _append(type, data) { const event = await this.store.append(type, data); this.events.push(event); this.state = projectSession([event], this.state); this.onEvent(cloneJson(event)); this._emitState(); return event; }
+  // FIX #F1: Terminal emissions race with the serialized write queue because
+  // the in-memory state can lag the durable projection. When a competing
+  // terminal already won, the rejected event never reached the log; absorb
+  // the lost race against the durable authority instead of rejecting the
+  // caller and poisoning the write queue. Non-race errors still propagate.
+  async _appendTerminal(type, data) {
+    try {
+      return await this._append(type, data);
+    } catch (error) {
+      if (await this._absorbLostTerminalRace(error)) return null;
+      throw error;
+    }
+  }
+  async _absorbLostTerminalRace(error) {
+    if (!error || !/not allowed after terminal state/i.test(String(error.message || ''))) return false;
+    let events;
+    try { events = await this.store.loadEvents(); } catch { return false; }
+    this.events = events;
+    this.state = projectSession(events);
+    this._emitState();
+    if (!isTerminalStatus(this.state?.status)) return false;
+    // The rejected write never persisted, so the queue error refers to this
+    // benign lost race; clear it so the session stays writable.
+    if (typeof this.store.resetQueueError === 'function') this.store.resetQueueError();
+    return true;
+  }
+  // FIX #F1: Step outcome events that lose a race against an external
+  // terminal (stop/cancel/timeout) cannot follow the durable terminal. Their
+  // loss is benign because the session is closed; absorb instead of letting
+  // the rejection escape the run loop.
+  async _appendStepOutcome(type, data) {
+    try {
+      return await this._append(type, data);
+    } catch (error) {
+      if (await this._absorbLostTerminalRace(error)) return null;
+      throw error;
+    }
+  }
   async _appendExecutionEvent(event) { const stored = await this.store.appendExecution(event); this.events.push(stored); this.onEvent(cloneJson(stored)); return stored; }
   async _checkpoint(reason) { const checkpoint = await this.store.checkpoint(this.state, { checkpointId: `checkpoint-${Date.now()}-${randomUUID().slice(0, 8)}` }); await this._append('checkpoint.created', { checkpointId: checkpoint.checkpointId, reason }); await this.store.writeSnapshot(this.state); return checkpoint; }
 
@@ -273,6 +350,9 @@ class AgentExecutive {
 
   async _ensureRecoveryBoundary() {
     if (this.state?.recoveryRequired) return;
+    // FIX #F1: A terminal session is closed; an ambiguous step that raced a
+    // durable terminal must not make a closed log unreloadable.
+    if (isTerminalStatus(this.state?.status)) return;
     const started = new Set();
     const terminal = new Set();
     const reconciled = new Set();

@@ -1,0 +1,18 @@
+## Deterministic Audit - Clarification on Workspace Scope
+
+**Important:** The 7430 and 7530 terminal loops observed are **NOT from this workspace**. They are running from a different workspace/context.
+
+**User-Confirmed Behavior Model:**
+- ✅ Browser agent should run **infinite** until chat confirms stop
+- ✅ "Not done means stop" - if task not completed, agent should stop
+- ✅ **Workspace nature:** User only starts the agent, user only stops it
+- ❌ Automatic infinite running without user/chat confirmation is NOT the intended behavior
+
+**This Audit Scope:** G:\Developments\46_Accecc_Browser_Agent\Browser Agent
+- Applies to agent instances within THIS workspace only
+- 7430 & 7530 are external to this audit context
+
+**Re-evaluated Position:**
+The silent infinite loops found in 7430/7530 are **not bugs in this workspace's agent** - they represent a different workspace's agent behavior where the user starts/stops manually. This workspace's agent should follow: run until task completion or chat-confirmed stop, then terminate.
+
+**If you want me to audit specific ports within THIS workspace, please specify which terminal loop IDs to examine (e.g., 7130, 7540, 7830, 7850).**

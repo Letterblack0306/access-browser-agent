@@ -498,6 +498,32 @@ body { background: #0d0d0f; }
   color: var(--muted);
 }
 
+/* VS Code reference presentation layer. Functional view ownership remains in
+   RebuildShell; these rules only bring the active workbench chrome closer to
+   the supplied IDE reference. */
+.topbar{height:35px;gap:6px;padding:0 8px;background:#181818;border-bottom-color:#2b2b2b;font-size:11px;}
+.brand{gap:6px;font-size:10px;letter-spacing:.02em;text-transform:none;}
+.brand-mark{width:20px;height:20px;border:0;border-radius:3px;background:#007acc;color:#fff;font-size:8px;}
+.title-menu{display:inline-flex;align-items:center;gap:1px;margin-left:4px;}
+.title-menu button{height:24px;border:0;border-radius:3px;padding:0 7px;background:transparent;color:#c8c8c8;cursor:pointer;font-size:11px;}
+.title-menu button:hover{background:#2a2d2e;color:#fff;}
+.workspace-pill{max-width:250px;color:#9d9d9d;font-family:var(--font-ui);font-size:10px;}
+.command-search{display:inline-flex;align-items:center;gap:7px;width:min(330px,28vw);height:24px;padding:0 8px;border:1px solid #3b3b3b;border-radius:4px;background:#252526;color:#a9a9a9;cursor:pointer;font-size:10px;text-align:left;}
+.command-search:hover{border-color:#6b6b6b;background:#2d2d30;color:#e4e4e4;}
+.command-search span:nth-child(2){flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.command-search kbd{color:#858585;font:9px var(--font-mono);}
+.health-strip{gap:3px;}.health-chip{height:22px;padding:0 6px;border:0;background:transparent;font-size:8px;}.view-meta{display:none;}
+.center-region>.tabs{height:35px;background:#252526;border-bottom-color:#333;}
+.center-region>.tabs .tab{min-width:92px;padding:0 13px;border-right-color:#333;color:#969696;font-size:11px;font-weight:400;text-align:left;}
+.center-region>.tabs .tab.is-active{background:#1e1e1e;color:#fff;}
+.center-region>.tabs .tab.is-active::after{left:0;right:0;height:1px;background:#007acc;}
+.left-region{background:#252526;border-right-color:#333;}.center-region{background:#1e1e1e;}.bottom-region{background:#1e1e1e;border-top-color:#333;}
+.ide-activity-button.is-active::before{background:#007acc;}
+.editor-view{background:#1e1e1e;}.editor-toolbar{height:32px;padding:0 12px;background:#1e1e1e;border-bottom-color:#2d2d2d;}
+.editor-breadcrumb,.breadcrumb-separator{color:#858585;font-size:11px;}.breadcrumb-separator{padding:0 6px;color:#555;}.editor-path{color:#ccc;font-size:11px;}
+.editor-textarea{padding:16px 22px;background:#1e1e1e;color:#d4d4d4;font-size:13px;line-height:1.6;tab-size:2;}
+.statusbar{min-height:22px;background:#007acc;border-top-color:#0065a8;color:#fff;font-size:8px;text-transform:none;letter-spacing:0;}.statusbar::before{color:#fff;}
+
 .step-row .step-number {
   color: var(--faint);
   font-variant-numeric: tabular-nums;

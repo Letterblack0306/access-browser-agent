@@ -9,21 +9,25 @@
   <link rel="stylesheet" href="./rebuild-shell.css">
   <link rel="stylesheet" href="./rebuild-settings.css">
   <link rel="stylesheet" href="./rebuild-ide-reference.css">
+  <link rel="stylesheet" href="./rebuild-icons.css">
+  <link rel="stylesheet" href="./rebuild-chat.css">
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">AA</span><span>Access Agent</span></div>
+      <nav class="title-menu" aria-label="Application menu"><button type="button">File</button><button type="button">Edit</button><button type="button">Selection</button><button type="button">View</button><button type="button">Go</button><button type="button">Run</button><button type="button">Terminal</button><button type="button">Help</button></nav>
       <span id="workspacePath" class="workspace-pill" title="Active workspace">Starting…</span>
-      <button id="chooseWorkspace" class="control compact" type="button">Workspace</button>
+      <button id="chooseWorkspace" class="control compact" type="button"><span class="icon workspace icon-sm" aria-hidden="true"></span><span>Workspace</span></button>
       <div class="top-spacer"></div>
       <div class="health-strip" aria-label="Runtime health">
         <span id="runtimeHealth" class="health-chip"><span class="dot"></span><span class="label">Runtime</span><span data-value>Unknown</span></span>
         <span id="providerHealth" class="health-chip"><span class="dot"></span><span class="label">Provider</span><span data-value>Unknown</span></span>
         <span id="loopHealth" class="health-chip"><span class="dot"></span><span class="label">Loop</span><span data-value>Stopped</span></span>
       </div>
+      <span id="view-meta" class="view-meta">Center — Task — live session</span>
       <select id="resetActions" class="target-select compact-select" aria-label="Reset and recovery actions">
-        <option value="">Reset ▾</option>
+        <option value="">Reset</option>
         <option value="browser-session">Reset browser session</option>
         <option value="runtime">Reset runtime</option>
         <option value="layout">Reset layout</option>
@@ -34,22 +38,27 @@
         <select id="model-select" class="model-select" aria-label="Model">
           <option value="">No models discovered</option>
         </select>
-        <button id="btn-start" class="control primary compact" type="button">▶ Start Agent</button>
-        <button id="btn-stop" class="control danger compact" type="button" style="display:none">■ Stop</button>
+        <button id="btn-start" class="control primary compact" type="button"><span class="icon agent icon-sm" aria-hidden="true"></span><span>Start Agent</span></button>
+        <button id="btn-stop" class="control danger compact" type="button" style="display:none">
+        <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+            <input id="chat-url" type="text" placeholder="Enter Chat URL (optional)" style="flex: 1; padding: 8px; border: 1px solid #333; background: #111; color: #fff;" />
+            <span id="status-text" style="color: #888; font-family: monospace;">STOPPED</span>
+        </div>
+    <span class="icon close icon-sm" aria-hidden="true"></span><span>Stop</span></button>
       </div>
     </header>
 
     <main class="workbench" aria-label="Access Agent workbench">
       <aside class="region left-region" aria-label="Workspace context">
         <nav class="ide-activity-rail" data-ide-activity-rail aria-label="Workbench activity">
-          <button class="ide-activity-button is-active" data-ide-target="files" type="button" aria-label="Files" aria-pressed="true">▤</button>
-          <button class="ide-activity-button" data-ide-target="agent" type="button" aria-label="Agent task" aria-pressed="false">✦</button>
-          <button class="ide-activity-button" data-ide-target="execution" type="button" aria-label="Execution" aria-pressed="false">›_</button>
-          <button class="ide-activity-button" data-ide-target="editor" type="button" aria-label="Editor" aria-pressed="false">‹›</button>
-          <button class="ide-activity-button" data-ide-target="browser" type="button" aria-label="Browser loop" aria-pressed="false">◉</button>
+          <button class="ide-activity-button is-active" data-ide-target="files" type="button" aria-label="Files" aria-pressed="true"><span class="icon files icon-md"></span></button>
+          <button class="ide-activity-button" data-ide-target="agent" type="button" aria-label="Agent task" aria-pressed="false"><span class="icon agent icon-md"></span></button>
+          <button class="ide-activity-button" data-ide-target="execution" type="button" aria-label="Execution" aria-pressed="false"><span class="icon terminal icon-md"></span></button>
+          <button class="ide-activity-button" data-ide-target="editor" type="button" aria-label="Editor" aria-pressed="false"><span class="icon code icon-md"></span></button>
+          <button class="ide-activity-button" data-ide-target="browser" type="button" aria-label="Browser loop" aria-pressed="false"><span class="icon browser icon-md"></span></button>
           <div class="ide-activity-spacer"></div>
-          <button class="ide-activity-button" data-ide-target="runtime" type="button" aria-label="Runtime" aria-pressed="false">◇</button>
-          <button class="ide-activity-button" data-ide-target="settings" type="button" aria-label="Settings" aria-pressed="false">⚙</button>
+          <button class="ide-activity-button" data-ide-target="runtime" type="button" aria-label="Runtime" aria-pressed="false"><span class="icon runtime icon-md"></span></button>
+          <button class="ide-activity-button" data-ide-target="settings" type="button" aria-label="Settings" aria-pressed="false"><span class="icon settings icon-md"></span></button>
         </nav>
         <section class="panel">
           <header class="panel-header"><span class="panel-title">Workspace</span><div class="panel-actions"><button id="refreshFiles" class="control compact" type="button">Refresh</button></div></header>
@@ -63,9 +72,14 @@
       <section class="region center-region" aria-label="Primary workspace">
         <div class="tabs" role="tablist" aria-label="Primary views">
           <button class="tab is-active" data-center-tab data-view="task" role="tab" aria-selected="true">Task</button>
+          <button class="tab" data-center-tab data-view="chat" role="tab" aria-selected="false">Chat</button>
+          <button class="tab" data-center-tab data-view="agents" role="tab" aria-selected="false">Agents</button>
           <button class="tab" data-center-tab data-view="execution" role="tab" aria-selected="false">Execution</button>
           <button class="tab" data-center-tab data-view="manager" role="tab" aria-selected="false">Agent Manager</button>
           <button class="tab" data-center-tab data-view="editor" role="tab" aria-selected="false">Editor</button>
+          <button class="tab" data-center-tab data-view="loop" role="tab" aria-selected="false">Browser Loop</button>
+          <button class="tab" data-center-tab data-view="runtime" role="tab" aria-selected="false">Runtime</button>
+          <button class="tab" data-center-tab data-view="settings" role="tab" aria-selected="false">Settings</button>
         </div>
         <section class="view" data-center-view data-view="task">
           <div class="task-view">
@@ -73,7 +87,13 @@
             <div id="conversation" class="conversation" aria-live="polite"><div id="conversationEmpty" class="empty-state"><strong>Waiting for browser work</strong>Paste the exact supported chat URL in Browser Loop and press Start. Access Agent will attach that conversation and wait for its instruction.</div></div>
           </div>
         </section>
-        <section class="view" data-center-view data-view="execution" hidden><div class="panel"><header class="panel-header"><span class="panel-title">Execution Monitor</span><div class="panel-actions"><button id="refreshTrace" class="control compact" type="button">Refresh trace</button></div></header><div id="executionList" class="panel-body execution-list"></div></div></section>
+        <section class="view" data-center-view data-view="chat" hidden>
+          <div id="chatViewContainer"><div class="empty-state"><strong>Chat view loading</strong><span>Conversation details will appear when the chat integration is ready.</span></div></div>
+        </section>
+        <section class="view" data-center-view data-view="agents" hidden>
+          <div id="agentsViewContainer"><div class="empty-state"><strong>Agent sessions loading</strong><span>Active and recent sessions will appear when the runtime reports them.</span></div></div>
+        </section>
+        <section class="view" data-center-view data-view="execution" hidden><div class="panel"><header class="panel-header"><span class="panel-title">Execution Monitor</span><div class="panel-actions"><button id="refreshTrace" class="control compact" type="button">Refresh trace</button></div></header><div id="executionList" class="panel-body execution-list"><div class="empty-state"><strong>No execution trace yet</strong><span>Execution evidence will appear after an agent turn starts.</span></div></div></div></section>
         <section class="view" data-center-view data-view="manager" hidden>
           <div class="manager-view">
             <div class="panel manager-lanes-panel"><header class="panel-header"><span class="panel-title">Agent Manager</span></header><div id="agentLanes" class="panel-body agent-lanes"></div></div>
@@ -81,33 +101,30 @@
             <div class="panel manager-reasoning-panel"><header class="panel-header"><span class="panel-title">Reasoning Trace</span></header><div id="reasoningTrace" class="panel-body reasoning-trace"></div></div>
           </div>
         </section>
-        <section class="view" data-center-view data-view="editor" hidden><div class="editor-view"><div class="editor-toolbar"><span id="editorPath" class="editor-path">No file open</span><button id="saveFile" class="control compact" type="button" disabled>Save</button></div><textarea id="editorText" class="editor-textarea" spellcheck="false" aria-label="File editor" disabled></textarea></div></section>
+        <section class="view" data-center-view data-view="editor" hidden><div class="editor-view"><div class="editor-toolbar"><span class="editor-breadcrumb">workspace</span><span class="breadcrumb-separator">›</span><span id="editorPath" class="editor-path">No file open</span><button id="saveFile" class="control compact" type="button" disabled>Save</button></div><textarea id="editorText" class="editor-textarea" spellcheck="false" aria-label="File editor" disabled></textarea></div></section>
       </section>
-      <div class="resizer vertical right" data-resizer="right" role="separator" aria-orientation="vertical" aria-label="Resize state panel" tabindex="0"></div>
-
-      <aside class="region right-region" aria-label="Agent and browser state">
-        <div class="tabs" role="tablist" aria-label="State views"><button class="tab is-active" data-right-tab data-view="loop" role="tab" aria-selected="true">Browser Loop</button><button class="tab" data-right-tab data-view="runtime" role="tab" aria-selected="false">Runtime</button><button class="tab" data-right-tab data-view="settings" role="tab" aria-selected="false">Settings</button></div>
-        <section class="view" data-right-view data-view="loop">
+      <section class="view" data-center-view data-view="loop" hidden>
           <div class="right-stack">
             <section class="section"><header class="section-head"><span class="section-title">Exact conversation</span><span id="browserBadge" class="badge">Stopped</span></header><div class="section-body">
               <label class="field-label">Chat URL<input id="chatUrl" class="text-input" type="url" autocomplete="url" placeholder="https://chatgpt.com/c/…"></label>
               <div class="microcopy">Paste the exact chat URL and press Start. Access Agent activates its runtime if needed, opens that exact conversation in its managed Chrome, proves provider readiness, attaches the relay, and waits for browser instructions. No port or tab selection is required.</div>
-              <div class="button-row spaced"><button id="loopStart" class="control primary compact" type="button">Start</button></div>
+              <div class="microcopy">Use the single Start Agent control in the top bar to begin the browser-owned loop.</div>
             </div></section>
             <section class="section"><header class="section-head"><span class="section-title">Loop status</span><span id="loopBadge" class="badge">Stopped</span></header><div class="section-body"><dl class="kv spaced"><dt>Target</dt><dd id="targetDetail">Not selected</dd><dt>State</dt><dd id="loopDetail">Stopped</dd><dt>CDP</dt><dd id="cdpDetail">Not connected</dd><dt>Instruction</dt><dd id="instructionDetail">—</dd></dl><details><summary class="microcopy">Recovery / diagnostics</summary><div class="button-row spaced"><button id="recoverLoop" type="button" hidden aria-hidden="true">Reset browser session</button><button id="checkTarget" class="control compact" type="button">Check once</button></div></details></div></section>
             <section class="section"><header class="section-head"><span class="section-title">Result delivery</span><span id="deliveryBadge" class="badge">Idle</span></header><div class="section-body"><div class="state-line"><strong id="deliveryState">Idle</strong><span id="deliveryAttempts">0 / 0</span></div><div class="delivery-meter"><span id="deliveryMeter"></span></div><div id="deliveryDetail" class="microcopy">No queued browser result.</div></div></section>
           </div>
-        </section>
-        <section class="view" data-right-view data-view="runtime" hidden><div class="right-stack"><section class="section"><header class="section-head"><span class="section-title">Runtime authority</span></header><div class="section-body"><dl class="kv"><dt>Runtime</dt><dd id="runtimeDetail">Unknown</dd><dt>Provider</dt><dd id="providerDetail">Unknown</dd><dt>Agent</dt><dd id="agentDetail">Idle</dd><dt>Turn</dt><dd id="turnDetail">—</dd></dl><div class="microcopy">Runtime activation is demand-driven by Browser Loop Start. Recovery actions are available from the top-bar Reset menu.</div><div class="button-row spaced" hidden aria-hidden="true"><button id="runtimeRestart" type="button">Reset runtime</button><button id="stopAll" type="button">Stop All</button></div></div></section><section class="section"><header class="section-head"><span class="section-title">Workspace evidence</span></header><div class="section-body"><div class="button-row"><button id="refreshGit" class="control compact" type="button">Refresh Git</button></div><div id="gitSummary" class="git-summary" role="status" aria-live="polite"><div class="git-empty">Git status not loaded.</div></div></div></section></div></section>
-        <section class="view" data-right-view data-view="settings" hidden>
+        <section class="view" data-center-view data-view="runtime" hidden><div class="right-stack"><section class="section"><header class="section-head"><span class="section-title">Runtime authority</span></header><div class="section-body"><dl class="kv"><dt>Runtime</dt><dd id="runtimeDetail">Unknown</dd><dt>Provider</dt><dd id="providerDetail">Unknown</dd><dt>Agent</dt><dd id="agentDetail">Idle</dd><dt>Turn</dt><dd id="turnDetail">—</dd></dl><div class="microcopy">Runtime activation is demand-driven by Browser Loop Start. Recovery actions are available from the top-bar Reset menu.</div><div class="button-row spaced" hidden aria-hidden="true"><button id="runtimeRestart" type="button">Reset runtime</button><button id="stopAll" type="button">Stop All</button></div></div></section><section class="section"><header class="section-head"><span class="section-title">Workspace evidence</span></header><div class="section-body"><div id="gitSummary" class="git-summary"><div class="empty-state"><strong>Workspace evidence loading</strong><span>Git status will appear after the workspace is inspected.</span></div></div><button id="refreshGit" class="control compact" type="button">Refresh</button></div></section></div></section>
+        <section class="view" data-center-view data-view="settings" hidden>
+            <span class="icon search settings-search-icon" aria-hidden="true"></span>
+            <input id="settingsSearch" class="settings-search-input" type="search" placeholder="Search settings" aria-label="Search settings">
+            <button id="settingsSearchClear" class="settings-search-clear" type="button" title="Clear settings search" hidden><span class="icon close icon-sm"></span></button>
+          </div>
           <div class="right-stack">
             <section class="section"><header class="section-head"><span class="section-title">Cline account</span><span id="clineAuthBadge" class="badge">Signed out</span></header><div class="section-body"><div class="button-row"><button id="clineLogin" class="control compact" type="button">Sign in</button><button id="clineLogout" class="control compact" type="button">Sign out</button></div><div id="clineAuthStatus" class="microcopy">Not signed in</div><label class="field-label">Model<select id="clineModel" class="target-select"><option value="">Select model…</option></select></label><div class="button-row"><button id="clineRefreshModels" class="control compact" type="button">Discover</button><button id="clineTest" class="control compact" type="button">Test READY</button><button id="clineUse" class="control primary compact" type="button">Use Cline</button></div><input id="clineAuthUrl" class="text-input hidden-field" readonly aria-label="Cline authorization URL"></div></section>
             <section class="section"><header class="section-head"><span class="section-title">LM Studio</span><span id="lmProviderBadge" class="badge">Not checked</span></header><div class="section-body"><label class="field-label">Base URL<input id="lmBaseUrl" class="text-input" placeholder="http://127.0.0.1:1234/v1"></label><label class="field-label">Model<select id="lmModel" class="target-select"><option value="">Select model…</option></select></label><div id="lmModelList" class="model-list"></div><div class="button-row"><button id="lmDiscover" class="control compact" type="button">Discover</button><button id="lmTest" class="control compact" type="button">Test READY</button><button id="lmUse" class="control primary compact" type="button">Use LM Studio</button></div><div id="lmStatus" class="microcopy">Not checked</div></div></section>
             <section class="section"><header class="section-head"><span class="section-title">Managed Chrome defaults</span></header><div class="section-body"><label class="field-label">Profile folder <span class="field-optional">optional override</span><input id="browserProfilePath" class="text-input" placeholder="Automatic Access-owned profile"></label><div class="button-row"><button id="chooseChromeProfile" class="control compact" type="button">Choose…</button><button id="saveBrowserDefaults" class="control compact" type="button">Save</button></div><label class="field-label">Chrome executable <span class="field-optional">optional</span><input id="browserExecutable" class="text-input" placeholder="Auto-detect Chrome"></label><div id="browserSettingsStatus" class="microcopy">Access-owned defaults are used unless overridden.</div></div></section>
             <section class="section"><header class="section-head"><span class="section-title">Local agent tools</span></header><div class="section-body"><button id="toggleMcp" class="control compact" type="button">Toggle MCP</button><div id="mcpDetail" class="microcopy">Unknown</div></div></section>
           </div>
-        </section>
-      </aside>
 
       <div class="resizer horizontal bottom" data-resizer="bottom" role="separator" aria-orientation="horizontal" aria-label="Resize bottom dock" tabindex="0"></div>
       <section class="region bottom-region" aria-label="Terminal and evidence dock">
@@ -120,13 +137,28 @@
       </section>
     </main>
 
-    <footer class="statusbar"><span class="status-item"><span class="dot ok"></span>Local</span><span id="statusRuntime" class="status-item"><span class="dot"></span>Runtime unknown</span><span id="statusLoop" class="status-item"><span class="dot"></span>Loop stopped</span><span id="statusTarget" class="status-item">No target</span><span class="status-spacer"></span><span id="statusDetail" class="status-detail">Initializing workbench</span><span class="status-item status-zoom" title="UI scale">
-      <button id="uiZoomOut" type="button" aria-label="Decrease UI scale">−</button>
-      <input id="uiZoomRange" type="range" min="70" max="150" step="5" value="100" aria-label="UI scale">
-      <span id="uiZoomValue">100%</span>
-      <button id="uiZoomIn" type="button" aria-label="Increase UI scale">+</button>
-    </span></footer>
+    <footer class="statusbar">
+      <span class="status-item"><span class="dot ok"></span>Local</span>
+      <span id="statusRuntime" class="status-item"><span class="dot"></span>Runtime unknown</span>
+      <span id="statusLoop" class="status-item"><span class="dot"></span>Loop stopped</span>
+      <span id="statusTarget" class="status-item">No target</span>
+      <span class="status-spacer"></span>
+      <span id="statusDetail" class="status-detail">Initializing workbench</span>
+      <button id="notificationsBtn" class="status-item status-btn" title="Notifications"><span class="icon bell icon-sm"></span><span id="notificationBadge" class="badge" hidden>0</span></button>
+      <span class="status-item status-zoom" title="UI scale">
+        <button id="uiZoomOut" type="button" aria-label="Decrease UI scale">-</button>
+        <input id="uiZoomRange" type="range" min="70" max="150" step="5" value="100" aria-label="UI scale">
+        <span id="uiZoomValue">100%</span>
+        <button id="uiZoomIn" type="button" aria-label="Increase UI scale">+</button>
+      </span>
+    </footer>
+    <div id="toastContainer" class="toast-container"></div>
+    <div id="notificationCenter" class="notification-center" hidden></div>
   </div>
+  <script src="./rebuild-toast.js"></script>
+  <script src="./rebuild-chat.js"></script>
+  <script src="./rebuild-agents-window.js"></script>
+  <script src="./rebuild-ui-integration.js"></script>
   <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
   <script src="./rebuild-runtime-state.js"></script>

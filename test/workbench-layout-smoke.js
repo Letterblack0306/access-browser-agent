@@ -12,8 +12,8 @@ assert.deepEqual(layout.modules.map(module => module.id), [
   'explorer', 'task', 'execution', 'editor', 'browser-loop', 'runtime', 'settings', 'terminal', 'events', 'problems'
 ]);
 assert.equal(layout.modules.find(module => module.id === 'explorer').placement, 'left');
-assert.equal(layout.modules.find(module => module.id === 'task').placement, 'right');
-assert.equal(layout.modules.find(module => module.id === 'browser-loop').placement, 'right-agent');
+assert.equal(layout.modules.find(module => module.id === 'task').placement, 'center');
+assert.equal(layout.modules.find(module => module.id === 'browser-loop').placement, 'center');
 assert.equal(layout.modules.filter(module => module.placement === 'bottom' && module.visible).length, 1);
 assert.equal(layout.modules.find(module => module.id === 'terminal').content, 'terminal');
 assert.equal(layout.modules.find(module => module.id === 'events').visible, false);

@@ -583,8 +583,8 @@ ipcMain.handle('ide:agent-reject', (_event, approvalId) => agentRuntime.reject(a
 // AgentRuntimeAdapter (created by createConfiguredAgentRuntime) that owns the
 // rest of the agent lifecycle, and are guarded by assertRuntimeActive() so a
 // stopped runtime cannot be invoked through any of these paths.
-ipcMain.handle('ide:get-models', () => { assertRuntimeActive(); return agentRuntime.discoverModels(); });
-ipcMain.handle('ide:agent-start', (_event, input = {}) => { assertRuntimeActive(); return agentRuntime.executeWithFallback(input); });
+// ide:get-models is handled globally in rebuild-main.js to bypass runtime gate
+// ide:agent-start is handled globally in rebuild-main.js to bypass runtime gate
 ipcMain.handle('ide:agent-stop', (_event, turnId) => { assertRuntimeActive(); return agentRuntime.stop(turnId); });
 ipcMain.handle('ide:loop-status', () => {
   if (!runtimeActive || !agentRuntime) return { state: { status: 'stopped' }, feedback: null };
@@ -666,4 +666,6 @@ app.on('before-quit', () => {
   if (workspaceSync) workspaceSync.stop();
   if (bridgeServer) bridgeServer.close();
 });
+
+
 

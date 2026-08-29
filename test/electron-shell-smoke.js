@@ -17,6 +17,8 @@ const layout = parseWorkbenchLayout(read('electron/workbench.layout.json'));
 for (const required of ['contextIsolation: true', 'nodeIntegration: false', "'ide:status'", "'ide:runtime-start'", "'ide:browser-relay-start'", "'ide:agent-status'"]) {
   assert.match(main, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')), `Electron main is missing: ${required}`);
 }
+assert.match(main, /ipcMain\.handle\('ide:get-models',\s*\(\)\s*=>\s*agentRuntime\.discoverModels\(\)\)/u, 'model discovery must remain available while runtime execution is stopped');
+assert.match(main, /ipcMain\.handle\('ide:agent-start',\s*\(_event, input = \{\}\)\s*=> \{ assertRuntimeActive\(\);/u, 'agent execution must remain runtime-gated');
 for (const required of ["'ide:status'", "'ide:runtime-start'", "'ide:browser-open-exact-chat'", "'ide:browser-relay-start'", "'ide:agent-execution-trace'", "'ide:terminal-create'"]) {
   assert.match(preload, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')), `Preload route is missing: ${required}`);
 }
@@ -28,9 +30,10 @@ for (const forbidden of ['sendBirdEye', 'birdEyeStatus', 'ide:birdeye', 'BirdEye
 for (const required of ['rebuild-runtime-state.js', 'rebuild-shell.js', 'rebuild-renderer.js', 'rebuild-settings.js', 'rebuild-ide-reference.css']) {
   assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
 }
-for (const required of ['access-agent.rebuild-layout.v1', 'showCenter', 'showRight', 'showBottom', 'bindResizer']) {
+for (const required of ['access-agent.rebuild-layout.v1', 'showCenter', 'showBottom', 'bindResizer', 'updateViewMeta']) {
   assert.match(shell, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
 }
+assert.ok(!shell.includes('showRight(view)'), 'right-rail view navigation must be removed');
 for (const required of ['RebuildRuntimeState', 'render', 'refreshStatus', 'startExactLoop', 'onAgentEvent']) {
   assert.match(renderer, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
 }

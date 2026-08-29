@@ -8,3 +8,4 @@ dist/
 *.tmp
 installer/output/
 Doc/
+.gpt-sync/checkpoint-shadow/.git/

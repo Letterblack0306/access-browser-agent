@@ -148,22 +148,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .workbench {
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--left-w) 4px minmax(340px, 1fr) 4px var(--right-w);
+  grid-template-columns: var(--left-w) 4px minmax(340px, 1fr);
   grid-template-rows: minmax(180px, 1fr) 4px var(--bottom-h);
   background: var(--bg);
 }
 .region { min-width: 0; min-height: 0; background: var(--surface); overflow: hidden; }
 .left-region { grid-column: 1; grid-row: 1 / 4; border-right: 1px solid var(--border); }
 .center-region { grid-column: 3; grid-row: 1; }
-.right-region { grid-column: 5; grid-row: 1; border-left: 1px solid var(--border); }
-.bottom-region { grid-column: 3 / 6; grid-row: 3; border-top: 1px solid var(--border); }
+.right-region { display: none; }
+.bottom-region { grid-column: 3; grid-row: 3; border-top: 1px solid var(--border); }
 .resizer { position: relative; z-index: 4; background: transparent; }
 .resizer:hover, body.is-resizing .resizer { background: rgba(255,59,59,.28); }
 .resizer.vertical { cursor: col-resize; }
 .resizer.horizontal { cursor: row-resize; }
 .resizer.left { grid-column: 2; grid-row: 1 / 4; }
-.resizer.right { grid-column: 4; grid-row: 1; }
-.resizer.bottom { grid-column: 3 / 6; grid-row: 2; }
+.resizer.right { display: none; }
+.resizer.bottom { grid-column: 3; grid-row: 2; }
 
 .panel { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .panel-header {
@@ -367,7 +367,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .badge.info { background: rgba(96,165,250,.12); color: var(--blue); }
 
 @media (max-width: 1120px) {
-  :root { --right-w: 290px; --left-w: 220px; }
+  :root { --left-w: 220px; }
   .health-chip span.label { display: none; }
   .workspace-pill { max-width: 240px; }
 }
@@ -421,4 +421,33 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .reasoning-arrow{font-size:10px;color:#6b7280;}
 
 
+
+
+/* Live session stream: pinned with optional follow-latest toggle */
+.live-stream-follow-bar{display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--surface-raised);border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);}
+.live-stream-follow-bar button{height:22px;padding:0 7px;border:1px solid var(--border);border-radius:3px;background:var(--surface);color:var(--text);font-size:10px;cursor:pointer;}
+.live-stream-follow-bar button.is-active{border-color:rgba(255,59,59,.4);background:var(--red-soft);color:#ff7777;}
+.live-stream-last{font-variant-numeric:tabular-nums;color:var(--faint);}
+
+/* View-meta region: "where am I" indicator */
+.view-meta{display:inline-flex;align-items:center;gap:4px;padding:0 7px;height:22px;border:1px solid var(--border);border-radius:3px;background:var(--surface-soft);font-size:10px;color:var(--muted);white-space:nowrap;}
+.view-meta::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);}
+
+/* Pinned conversation: bounded height with internal scroll */
+.conversation.is-pinned{max-height:340px;overflow-y:auto;scroll-behavior:smooth;}
+
+/* Activity rail group labels */
+.ide-activity-group{display:flex;flex-direction:column;gap:2px;width:100%;align-items:center;}
+.ide-activity-group-label{font:700 8px/1 var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:6px;}
+
+
+/* Status bar notification button */
+.status-btn { border: none; background: transparent; cursor: pointer; gap: 4px; display: inline-flex; align-items: center; }
+.status-btn:hover { background: rgba(255,255,255,.06); }
+.status-btn .badge { background: var(--red); color: #fff; font-size: 8px; padding: 0 4px; border-radius: 6px; min-width: 14px; text-align: center; }
+.control .icon { margin-right: 4px; }
+
+/* Chat/Agents view containers fill region */
+#chatViewContainer, #agentsViewContainer { height: 100%; min-height: 0; }
+.view[data-view="chat"], .view[data-view="agents"] { padding: 0; }
 

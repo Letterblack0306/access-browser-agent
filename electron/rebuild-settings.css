@@ -46,6 +46,9 @@
 .section .text-input { font-family: var(--font-mono); font-size: 9px; }
 .section .target-select { font-size: 9px; }
 
+.settings-search { flex-shrink: 0; }
+.settings-search-input { min-width: 0; }
+
 /* LM Studio status feedback */
 .microcopy.status-ok { color: var(--green, #4ec97e); }
 .microcopy.status-error { color: var(--red, #e5534b); }

@@ -1,7 +1,7 @@
 'use strict';
 
 const MODULE_CONTENTS = new Set(['home', 'explorer', 'editor', 'agent', 'liveAgent', 'git', 'browser', 'activity', 'trace', 'evidence', 'changes', 'review', 'modules', 'settings', 'skills', 'index', 'terminal', 'workspaceSync', 'projectAudit', 'task-state']);
-const PLACEMENTS = new Set(['left', 'right', 'right-agent', 'bottom', 'drawer']);
+const PLACEMENTS = new Set(['left', 'center', 'right', 'right-agent', 'bottom', 'drawer']);
 
 function parseWorkbenchLayout(text) {
   let value;
@@ -11,7 +11,7 @@ function parseWorkbenchLayout(text) {
   const modules = value.modules.map(normalizeModule);
   if (new Set(modules.map(module => module.id)).size !== modules.length) throw new Error('Workbench module IDs must be unique.');
   if (new Set(modules.map(module => module.order)).size !== modules.length) throw new Error('Workbench module order must be unique.');
-  if (modules.filter(module => module.visible && module.placement === 'left').length < 1 || modules.filter(module => module.visible && module.placement === 'right').length < 1 || modules.filter(module => module.visible && module.placement === 'bottom').length !== 1) throw new Error('Workbench contract requires visible left and primary modules, plus one visible bottom module.');
+  if (modules.filter(module => module.visible && module.placement === 'left').length < 1 || modules.filter(module => module.visible && module.placement === 'center').length < 1 || modules.filter(module => module.visible && module.placement === 'bottom').length !== 1) throw new Error('Workbench contract requires visible left and center modules, plus one visible bottom module.');
   return Object.freeze({ version: 2, modules: Object.freeze(modules.sort((left, right) => left.order - right.order).map(Object.freeze)) });
 }
 

@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   status: () => invoke('ide:status'),
   runtimeStart: () => invoke('ide:runtime-start'),
   runtimeStop: () => invoke('ide:runtime-stop'),
+  getModels: () => invoke('ide:get-models'),
+  getStatus: () => invoke('ide:loop-status'),
   runtimeRestart: () => invoke('ide:runtime-restart'),
   workbenchLayout: () => invoke('ide:workbench-layout'),
   preferences: () => invoke('ide:preferences'),

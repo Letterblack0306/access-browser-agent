@@ -41,7 +41,7 @@ const settings = read('electron/rebuild-settings.js');
 const managedChrome = read('src/system/managed-chrome.js');
 const mainWrapper = read('electron/rebuild-main.js');
 
-for (const id of ['chatUrl','loopStart','recoverLoop','diagnosticList','diagnosticFilter','openDiagnosticFolder']) assert.ok(html.includes(`id="${id}"`), `missing user-facing observability control ${id}`);
+for (const id of ['chatUrl','btn-start','btn-stop','recoverLoop','diagnosticList','diagnosticFilter','openDiagnosticFolder']) assert.ok(html.includes(`id="${id}"`), `missing user-facing observability control ${id}`);
 assert.ok(renderer.includes('startExactLoop'));
 assert.ok(renderer.includes('browserOpenExactChat'));
 assert.ok(renderer.includes("api.savePreferences({ browserChatUrl"));

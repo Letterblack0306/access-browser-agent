@@ -15,6 +15,39 @@ const TERMINAL_STATUSES = new Set(['stopped', 'cancelled', 'completed', 'failed'
 // trigger (user action, reconciliation, or resume) to progress.
 const TRANSITIONAL_STATUSES = new Set(['idle', 'recovery_required']);
 
+const TERMINAL_EVENT_TYPES = new Set([
+  'session.stopped',
+  'session.cancelled',
+  'objective.completed',
+  'objective.failed',
+  'objective.blocked',
+  'objective.timed_out',
+]);
+
+// A completed objective may be deliberately reopened for a new instruction,
+// but only through this explicit first event of the next operation. Delayed
+// lifecycle events cannot silently revive a terminal operation.
+const REOPENABLE_TERMINAL_STATUSES = new Set(['completed', 'failed', 'blocked', 'timed_out']);
+
+function validateSessionEventTransition(previous, event) {
+  if (!event || typeof event !== 'object') throw new Error('Agent session event must be an object.');
+  if (!previous) {
+    if (event.type !== 'session.created') throw new Error(`Agent session event ${event.type} arrived before session.created`);
+    return true;
+  }
+  const status = String(previous.status || '');
+  if (isTerminalStatus(status)) {
+    if (event.type === 'objective.revised' && REOPENABLE_TERMINAL_STATUSES.has(status)) return true;
+    if (event.type === 'checkpoint.created') return true;
+    throw new Error(`Agent session event ${event.type} is not allowed after terminal state ${status}`);
+  }
+  if (event.type === 'session.created') throw new Error('Duplicate session.created event is not allowed.');
+  if (TERMINAL_EVENT_TYPES.has(event.type) && previous.completion && isTerminalStatus(status)) {
+    throw new Error(`Duplicate terminal event ${event.type} is not allowed.`);
+  }
+  return true;
+}
+
 function createInitialState({ sessionId, workspaceRoot, objective = '', providerSelection = null, createdAt = new Date().toISOString() } = {}) {
   if (!sessionId) throw new Error('sessionId is required');
   if (!workspaceRoot) throw new Error('workspaceRoot is required');
@@ -69,6 +102,7 @@ function reduceSessionEvent(previous, event) {
     });
   }
   if (!state) throw new Error(`Agent session event ${event.type} arrived before session.created`);
+  validateSessionEventTransition(previous, event);
 
   switch (event.type) {
     case 'session.created': break;
@@ -76,6 +110,10 @@ function reduceSessionEvent(previous, event) {
       state.objective = String(data.objective || '').trim();
       state.objectiveRevision += 1;
       state.completion = null;
+      state.status = 'idle';
+      state.waiting = null;
+      state.stopRequested = false;
+      state.cancelRequested = false;
       break;
     case 'session.running':
       state.status = 'running';
@@ -270,4 +308,4 @@ function normalizeConversationMessage(message) {
 }
 function cloneJson(value) { if (value === undefined) return null; return JSON.parse(JSON.stringify(value)); }
 
-module.exports = { ACTIVE_STATUSES, TERMINAL_STATUSES, TRANSITIONAL_STATUSES, createInitialState, projectSession, reduceSessionEvent, isActiveStatus, isTerminalStatus, isTransitionalStatus };
+module.exports = { ACTIVE_STATUSES, TERMINAL_STATUSES, TRANSITIONAL_STATUSES, createInitialState, projectSession, reduceSessionEvent, validateSessionEventTransition, isActiveStatus, isTerminalStatus, isTransitionalStatus };

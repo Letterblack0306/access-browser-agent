@@ -57,7 +57,7 @@
 
   function ensureModuleRegistryPanel() {
     if (byId('moduleRegistryBadge')) return;
-    const stack=document.querySelector('[data-right-view][data-view="runtime"] .right-stack');
+    const stack=document.querySelector('[data-center-view][data-view="runtime"] .right-stack');
     if(!stack)return;
     const section=document.createElement('section');
     section.className='section';

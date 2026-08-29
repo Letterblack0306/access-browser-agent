@@ -2,7 +2,7 @@
 
 (function attachRebuildShell(root) {
   const STORAGE_KEY = 'access-agent.rebuild-layout.v1';
-  const DEFAULTS = { leftWidth: 248, rightWidth: 332, bottomHeight: 230, centerView: 'task', rightView: 'loop', bottomView: 'terminal' };
+  const DEFAULTS = { leftWidth: 248, bottomHeight: 230, centerView: 'task', bottomView: 'terminal' };
 
   function clamp(value, min, max) { return Math.min(max, Math.max(min, Number(value) || min)); }
 
@@ -28,10 +28,8 @@
     mount() {
       this.applyDimensions();
       this.bindTabs('[data-center-tab]', '[data-center-view]', 'centerView');
-      this.bindTabs('[data-right-tab]', '[data-right-view]', 'rightView');
       this.bindTabs('[data-bottom-tab]', '[data-bottom-view]', 'bottomView');
       this.bindResizer('left', '--left-w', 'leftWidth', event => clamp(event.clientX, 190, Math.min(420, window.innerWidth * 0.36)));
-      this.bindResizer('right', '--right-w', 'rightWidth', event => clamp(window.innerWidth - event.clientX, 260, Math.min(480, window.innerWidth * 0.42)));
       this.bindResizer('bottom', '--bottom-h', 'bottomHeight', event => clamp(window.innerHeight - event.clientY - 22, 150, Math.min(430, window.innerHeight * 0.52)));
       this.handleViewportChange = () => {
         if (this.viewportFrame) cancelAnimationFrame(this.viewportFrame);
@@ -74,7 +72,6 @@
       const height = Math.max(640, Number(window.innerHeight) || 640);
       return {
         left: { min: 190, max: Math.max(190, Math.min(420, width * 0.36)) },
-        right: { min: 260, max: Math.max(260, Math.min(480, width * 0.42)) },
         bottom: { min: 150, max: Math.max(150, Math.min(430, height * 0.52)) },
       };
     }
@@ -83,18 +80,22 @@
       const limits = this.viewportLimits();
       const next = {
         leftWidth: clamp(this.state.leftWidth, limits.left.min, limits.left.max),
-        rightWidth: clamp(this.state.rightWidth, limits.right.min, limits.right.max),
         bottomHeight: clamp(this.state.bottomHeight, limits.bottom.min, limits.bottom.max),
       };
-      const changed = next.leftWidth !== this.state.leftWidth || next.rightWidth !== this.state.rightWidth || next.bottomHeight !== this.state.bottomHeight;
+      const changed = next.leftWidth !== this.state.leftWidth || next.bottomHeight !== this.state.bottomHeight;
       Object.assign(this.state, next);
       this.setLayoutVariable('--left-w', next.leftWidth);
-      this.setLayoutVariable('--right-w', next.rightWidth);
       this.setLayoutVariable('--bottom-h', next.bottomHeight);
       if (persist && changed) this.save();
     }
 
     bindTabs(tabSelector, viewSelector, key) {
+      const tab = this.doc.querySelector(`[data-view="${this.state[key]}"]`);
+      if (tab) {
+        tab.classList.add('is-active');
+        tab.setAttribute('aria-selected', 'true');
+        tab.tabIndex = 0;
+      }
       for (const tab of this.doc.querySelectorAll(tabSelector)) {
         const handler = () => {
           this.state[key] = tab.dataset.view;
@@ -118,11 +119,24 @@
         view.hidden = !active;
         view.classList.toggle('is-active', active);
       }
+      if (tabSelector === '[data-center-tab]') this.updateViewMeta(value, 'Center');
+      if (tabSelector === '[data-bottom-tab]') this.updateViewMeta(value, 'Bottom');
+    }
+
+    updateViewMeta(view, region) {
+      const meta = this.doc.getElementById('view-meta');
+      if (!meta) return;
+      const labels = {
+        task: 'Task', chat: 'Chat', agents: 'Agents', execution: 'Execution',
+        manager: 'Agent Manager', editor: 'Editor', loop: 'Browser Loop',
+        runtime: 'Runtime', settings: 'Settings', terminal: 'Terminal',
+        diagnostics: 'Complete Log', events: 'Events', problems: 'Problems', validation: 'Validation',
+      };
+      meta.textContent = `${region} — ${labels[view] || view}`;
     }
 
     activateAll() {
       this.activate('[data-center-tab]', '[data-center-view]', this.state.centerView);
-      this.activate('[data-right-tab]', '[data-right-view]', this.state.rightView);
       this.activate('[data-bottom-tab]', '[data-bottom-view]', this.state.bottomView);
     }
 
@@ -169,12 +183,6 @@
     showCenter(view) {
       this.state.centerView = view;
       this.activate('[data-center-tab]', '[data-center-view]', view);
-      this.save();
-    }
-
-    showRight(view) {
-      this.state.rightView = view;
-      this.activate('[data-right-tab]', '[data-right-view]', view);
       this.save();
     }
 

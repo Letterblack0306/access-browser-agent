@@ -34,7 +34,7 @@ for (const historical of [
 ]) assert.ok(!html.includes(historical), `historical UI must not be active: ${historical}`);
 
 for (const requiredId of [
-  'workspacePath','conversation','chatUrl','loopStart','recoverLoop','checkTarget','deliveryState','terminalHost',
+  'workspacePath','conversation','chatUrl','recoverLoop','checkTarget','deliveryState','terminalHost',
   'diagnosticList','diagnosticFilter','openDiagnosticFolder','eventList','problemList','validationOutput',
   'gitSummary','refreshGit',
   'clineLogin','clineModel','lmBaseUrl','browserProfilePath','toggleMcp','runtimeRestart','stopAll','resetLayout','resetActions',
@@ -69,7 +69,7 @@ assert.match(shell,/window\.visualViewport\?\.addEventListener\('resize'/u);
 assert.match(shell,/resolution: 1dppx/u);
 assert.match(shell,/applyDimensions\(true\)/u);
 assert.match(shell,/showCenter\(view\)/u);
-assert.match(shell,/showRight\(view\)/u);
+assert.ok(!shell.includes('showRight(view)'), 'right-rail view navigation must be removed');
 assert.match(shell,/showBottom\(view\)/u);
 assert.match(shell,/findRootRule\(\)/u);
 assert.match(shell,/setLayoutVariable\(name, value\)/u);
@@ -90,7 +90,10 @@ assert.doesNotMatch(renderer,/Projection\.(withEvent|fromSnapshot|withTargets|wi
 assert.match(renderer,/ensureRuntimeActive/u);
 assert.match(renderer,/trigger:'browser_loop_start'/u);
 assert.match(renderer,/toggleLoop/u);
-assert.match(renderer,/\$\('loopStart'\)\.textContent = state\.loop\.running \? 'Stop' : 'Start'/u);
+assert.match(renderer,/startBtn.textContent = state\.loop\.running \? 'Stop Agent' : 'Start Agent'/u);
+assert.match(renderer,/\$\('btn-start'\)\.addEventListener\('click',\(\)=>withBusy\(\$\('btn-start'\),toggleLoop\)/u);
+assert.match(renderer,/\$\('btn-stop'\)\.addEventListener\('click'/u);
+assert.doesNotMatch(renderer,/\$\('loopStart'\)/u,'legacy duplicate loopStart control must be removed');
 assert.match(renderer,/startExactLoop/u);
 assert.match(renderer,/api\.browserStart\(\)/u);
 assert.match(renderer,/api\.browserOpenExactChat/u);
@@ -148,8 +151,8 @@ assert.match(diagnosticEnhancer,/artifactId/u);
 
 assert.equal(layout.version,2);
 assert.ok(layout.modules.some(item=>item.id==='explorer'&&item.placement==='left'&&item.visible));
-assert.ok(layout.modules.some(item=>item.id==='task'&&item.placement==='right'&&item.visible));
-assert.ok(layout.modules.some(item=>item.id==='browser-loop'&&item.placement==='right-agent'&&item.visible));
+assert.ok(layout.modules.some(item=>item.id==='task'&&item.placement==='center'&&item.visible));
+assert.ok(layout.modules.some(item=>item.id==='browser-loop'&&item.placement==='center'&&item.visible));
 assert.equal(layout.modules.filter(item=>item.placement==='bottom'&&item.visible).length,1);
 
 console.log('rebuild-shell-smoke: PASS');

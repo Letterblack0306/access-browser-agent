@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { createExecutionEvent } = require('./ExecutionEventSchema');
+const { projectSession, reduceSessionEvent } = require('./AgentSessionState');
 
 const DEFAULT_STATE_DIR = '.gpt-sync';
 const SESSION_DIR = 'agent-sessions';
@@ -19,6 +20,10 @@ class AgentEventStore {
     this.snapshotPath = path.join(this.rootDir, 'snapshot.json');
     this.checkpointsDir = path.join(this.rootDir, 'checkpoints');
     this._writeQueue = Promise.resolve();
+    this._queueError = null;
+    this._sessionProjection = null;
+    this._executionTransitions = new Map();
+    this._executionTransitionsLoaded = false;
   }
 
   async ensure() {
@@ -53,6 +58,8 @@ class AgentEventStore {
         throw parseError;
       }
     }
+    projectSession(events);
+    validateExecutionEventSequence(events);
     return events;
   }
 
@@ -67,6 +74,7 @@ class AgentEventStore {
 
   append(type, data = {}, metadata = {}) {
     if (!type || typeof type !== 'string') return Promise.reject(new Error('event type is required'));
+    if (this._queueError) return Promise.reject(this._queueError);
     const event = Object.freeze({
       eventId: String(metadata.eventId || randomUUID()),
       sessionId: this.sessionId,
@@ -76,7 +84,14 @@ class AgentEventStore {
     });
     const write = async () => {
       await this.ensure();
+      if (this._sessionProjection === null) {
+        const existing = await this.loadEvents();
+        this._sessionProjection = existing.length ? projectSession(existing) : null;
+      }
+      const nextEvent = { ...event, data: cloneJson(data) };
+      const nextProjection = reduceSessionEvent(this._sessionProjection, nextEvent);
       await fs.appendFile(this.eventsPath, `${JSON.stringify(event)}\n`, 'utf8');
+      this._sessionProjection = nextProjection;
       return event;
     };
     // FIX: Error propagation. The previous implementation reassigned
@@ -98,14 +113,43 @@ class AgentEventStore {
     const pending = this._writeQueue.then(safeWrite, safeWrite);
     this._writeQueue = pending.catch(error => {
       console.error('AgentEventStore append write failed:', error);
-      throw error; // keep the queue head rejected so downstream sees the failure
+      this._queueError ||= error;
     });
     return pending;
   }
 
   appendExecution(input = {}) {
-    const execution = createExecutionEvent(input);
-    return this.append(execution.type, execution, { eventId: execution.eventId, createdAt: execution.timestamp });
+    let execution;
+    try { execution = createExecutionEvent(input); }
+    catch (error) { return Promise.reject(error); }
+    return this._ensureExecutionTransitions().then(() => {
+      const key = `${execution.sessionId}:${execution.toolCallId}`;
+      const previous = this._executionTransitions.get(key) || null;
+      validateExecutionTransition(previous, execution);
+      this._executionTransitions.set(key, execution);
+      return this.append(execution.type, execution, { eventId: execution.eventId, createdAt: execution.timestamp })
+        .catch(error => {
+          if (this._executionTransitions.get(key) === execution) {
+            if (previous) this._executionTransitions.set(key, previous);
+            else this._executionTransitions.delete(key);
+          }
+          throw error;
+        });
+    });
+  }
+
+  async _ensureExecutionTransitions() {
+    if (this._executionTransitionsLoaded) return;
+    const events = await this.loadEvents();
+    for (const event of events) {
+      if (!String(event?.type || '').startsWith('execution.')) continue;
+      const execution = event.data && typeof event.data === 'object' ? event.data : event;
+      const key = `${execution.sessionId}:${execution.toolCallId}`;
+      const previous = this._executionTransitions.get(key) || null;
+      validateExecutionTransition(previous, execution);
+      this._executionTransitions.set(key, execution);
+    }
+    this._executionTransitionsLoaded = true;
   }
 
   async loadExecutionEvents() {
@@ -114,6 +158,7 @@ class AgentEventStore {
   }
 
   writeSnapshot(snapshot) {
+    if (this._queueError) return Promise.reject(this._queueError);
     const write = async () => {
       await this.ensure();
       await atomicWriteJson(this.snapshotPath, snapshot);
@@ -122,6 +167,7 @@ class AgentEventStore {
     const pending = this._writeQueue.then(write, write);
     this._writeQueue = pending.catch(error => {
       console.error('AgentEventStore snapshot write failed:', error);
+      this._queueError ||= error;
     });
     return pending;
   }
@@ -138,6 +184,7 @@ class AgentEventStore {
   }
 
   checkpoint(snapshot, metadata = {}) {
+    if (this._queueError) return Promise.reject(this._queueError);
     const checkpointId = String(metadata.checkpointId || `checkpoint-${Date.now()}-${randomUUID().slice(0, 8)}`);
     const checkpointPath = path.join(this.checkpointsDir, `${sanitizeFileName(checkpointId)}.json`);
     const checkpoint = { checkpointId, sessionId: this.sessionId, createdAt: String(metadata.createdAt || new Date().toISOString()), snapshot: cloneJson(snapshot) };
@@ -150,6 +197,7 @@ class AgentEventStore {
     const pending = this._writeQueue.then(write, write);
     this._writeQueue = pending.catch(error => {
       console.error('AgentEventStore checkpoint write failed:', error);
+      this._queueError ||= error;
     });
     return pending;
   }
@@ -162,6 +210,7 @@ class AgentEventStore {
 
   async flush() {
     await this._writeQueue;
+    if (this._queueError) throw this._queueError;
   }
 }
 
@@ -201,7 +250,45 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function validateExecutionTransition(previous, event) {
+  const type = String(event.type || '');
+  if (type === 'execution.phase.changed') return true;
+  if (!previous) {
+    if (type !== 'execution.tool.started') throw new Error(`Execution event ${type} arrived before execution.tool.started for ${event.toolCallId}.`);
+    return true;
+  }
+  const previousType = String(previous.type || '');
+  if (previousType === 'execution.tool.completed' || previousType === 'execution.tool.failed') {
+    throw new Error(`Execution event ${type} is not allowed after terminal tool state for ${event.toolCallId}.`);
+  }
+  if (type === 'execution.tool.approval_requested' && previousType !== 'execution.tool.started') {
+    throw new Error(`Execution approval request is out of order for ${event.toolCallId}.`);
+  }
+  if (type === 'execution.tool.approval_decided' && previousType !== 'execution.tool.approval_requested') {
+    throw new Error(`Execution approval decision is out of order for ${event.toolCallId}.`);
+  }
+  if ((type === 'execution.tool.completed' || type === 'execution.tool.failed') && ![
+    'execution.tool.started', 'execution.tool.approval_decided',
+  ].includes(previousType)) {
+    throw new Error(`Execution terminal event ${type} is out of order for ${event.toolCallId}.`);
+  }
+  return true;
+}
+
+function validateExecutionEventSequence(events) {
+  const transitions = new Map();
+  for (const event of events || []) {
+    if (!String(event?.type || '').startsWith('execution.')) continue;
+    const execution = event.data && typeof event.data === 'object' ? event.data : event;
+    const key = `${execution.sessionId}:${execution.toolCallId}`;
+    const previous = transitions.get(key) || null;
+    validateExecutionTransition(previous, execution);
+    transitions.set(key, execution);
+  }
+}
+
 module.exports = AgentEventStore;
 module.exports.DEFAULT_STATE_DIR = DEFAULT_STATE_DIR;
 module.exports.SESSION_DIR = SESSION_DIR;
 module.exports.findLastContentLine = findLastContentLine;
+module.exports.validateExecutionTransition = validateExecutionTransition;
