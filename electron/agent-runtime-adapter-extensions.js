@@ -51,7 +51,7 @@ AgentRuntimeAdapter.prototype.discoverModels = async function() {
         });
     } catch(e) { this.lastPoolError = e.message; }
 
-    this.modelPool = [...lmModels, ...clineModels];
+    this.modelPool = [...lmModels, ...clineModels].filter(m => m.pricing?.classification === 'free' || m.free === true || m.id.includes('gemma') || m.id.includes('qwen')).slice(0, 5); // Only free/small models
     this.currentPoolIndex = 0;
     this.roundExhausted = false;
     return this.modelPool;
@@ -123,3 +123,4 @@ module.exports = { AgentRuntimeAdapter };
 AgentRuntimeAdapter.prototype.injectPromptRules = function(basePrompt) {
     return basePrompt + "\n\nCRITICAL RULES:\n1. When searchFiles returns matches, read the most relevant file before searching for another term.\n2. You already searched for X and found nothing. Try a different approach.";
 };
+
