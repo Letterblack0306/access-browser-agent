@@ -28,10 +28,10 @@ AgentRuntimeAdapter.prototype.checkForFeedback = async function() {
 // --- PATCH: Model Fallback Rotation ---
 
 
+
 AgentRuntimeAdapter.prototype.discoverModels = async function() {
     const settings = this.getSettings ? this.getSettings() : {};
     const baseUrl = settings.lmStudioBaseUrl || 'http://127.0.0.1:1234/v1';
-    const configuredModel = settings.lmStudioModel || '';
 
     let lmModels = [];
     try {
@@ -44,18 +44,25 @@ AgentRuntimeAdapter.prototype.discoverModels = async function() {
 
     let clineModels = [];
     try {
+        // Discover Cline models
         const clineRes = await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: 'cline', discoverOnly: true });
         clineModels = (clineRes.models || []).map(m => {
-            if (typeof m === 'string') return { id: m, name: m, provider: 'cline', status: 'available' };
-            return { ...m, provider: 'cline', status: 'available' };
-        });
+            if (typeof m === 'string') {
+                // For string models, mark as free if they start with '~' (Cline's free tier indicator)
+                const isFree = m.startsWith('~');
+                return { id: m, name: m, provider: 'cline', status: 'available', free: isFree };
+            }
+            const isFree = m.pricing?.classification === 'free' || m.free === true || String(m.id || m.name).toLowerCase().includes('free') || String(m.id || m.name).startsWith('~');
+            return { ...m, provider: 'cline', status: 'available', free: isFree };
+        }).filter(Boolean); // Remove nulls
     } catch(e) { this.lastPoolError = e.message; }
 
-    this.modelPool = [...lmModels, ...clineModels].filter(m => m.pricing?.classification === 'free' || m.free === true || m.id.includes('gemma') || m.id.includes('qwen')).slice(0, 5); // Only free/small models
+    this.modelPool = [...clineModels, ...lmModels].filter(m => m.free === true || m.id.includes('gemma') || m.id.includes('qwen') || m.id.includes('llama') || m.id.includes('smollm')).slice(0, 10);
     this.currentPoolIndex = 0;
     this.roundExhausted = false;
     return this.modelPool;
 };
+
 
 
 
@@ -86,8 +93,17 @@ AgentRuntimeAdapter.prototype.markModelExhausted = function(modelId) {
 
 
 
+
+
 AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
-    let model = this.getNextAvailableModel();
+    // Honor the model selected in the UI if provided
+    let model = null;
+    if (input.model) {
+        model = this.modelPool.find(m => m.id === input.model) || { id: input.model, name: input.model, provider: input.providerKind || 'lm-studio', status: 'available' };
+    } else {
+        model = this.getNextAvailableModel();
+    }
+
     if (!model) {
         return { error: 'NO_AVAILABLE_MODEL', message: 'All models exhausted or unavailable.' };
     }
@@ -97,10 +113,17 @@ AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
     this.waitingForInstruction = false;
 
     try {
-        // CRITICAL: Install the provider with the selected model BEFORE calling run()
+        // Determine which provider to use based on input or model
+        const providerKind = input.providerKind || model.provider || 'lm-studio';
         const settings = this.getSettings ? this.getSettings() : {};
-        const baseUrl = settings.lmStudioBaseUrl || 'http://127.0.0.1:1234/v1';
-        await this.updateProviderSettings({ providerKind: 'lm-studio', lmStudioBaseUrl: baseUrl, lmStudioModel: model.id });
+
+        // CRITICAL: Install the provider with the selected model BEFORE calling run()
+        if (providerKind === 'cline') {
+            await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: 'cline', clineModel: model.id, discoverOnly: false });
+        } else {
+            const baseUrl = settings.lmStudioBaseUrl || 'http://127.0.0.1:1234/v1';
+            await this.updateProviderSettings({ providerKind: 'lm-studio', lmStudioBaseUrl: baseUrl, lmStudioModel: model.id });
+        }
 
         // CRITICAL: Check health to mark provider as configured
         if (this.service.provider && typeof this.service.provider.checkHealth === 'function') {
@@ -108,8 +131,8 @@ AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
         }
 
         // If the model is a small/free model, bypass the strict tool-calling probe
-        const isSmallModel = model.id.includes('gemma') || model.id.includes('qwen') || model.id.includes('llama');
-        
+        const isSmallModel = model.id.includes('gemma') || model.id.includes('qwen') || model.id.includes('llama') || model.id.includes('smollm') || model.free === true;
+
         if (isSmallModel) {
             // Skip the probe; directly run the agent
             const result = await this.run({ ...input, model: model.id });
@@ -137,6 +160,8 @@ AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
         this.loopActive = false;
     }
 };
+
+
 
 
 
