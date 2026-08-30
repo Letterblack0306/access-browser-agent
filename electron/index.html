@@ -139,11 +139,19 @@
     </div>
     <!-- Center Editor -->
     <div class="editor">
+      <!-- Editor Toolbar -->
+      <div style="height: 35px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; align-items: center; padding: 0 10px; gap: 10px;">
+        <span style="font-size: 11px; color: #858585; font-weight: bold;">Editor</span>
+        <button onclick="createNewFile()" style="background: #2d2d30; border: 1px solid #3c3c3c; color: #d4d4d4; border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;">New File</button>
+        <button onclick="saveCurrentFile()" style="background: #0e639c; border: none; color: white; border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;">Save</button>
+        <span id="currentFileName" style="font-size: 11px; color: #858585; margin-left: auto; font-family: monospace;"></span>
+      </div>
       <div class="editor-tabs">
         <div class="px-3 py-2 text-xs text-muted">No file selected</div>
       </div>
-      <div class="editor-content">
-        <div class="text-center">
+      <div class="editor-content" style="flex-direction: column; align-items: stretch; justify-content: flex-start;">
+        <textarea id="editorArea" style="flex: 1; width: 100%; background: #1e1e1e; color: #d4d4d4; border: none; outline: none; padding: 10px; font-family: monospace; font-size: 13px; resize: none; display: none;" placeholder="Select a file or create a new one to start editing..." oninput="markFileDirty()"></textarea>
+        <div id="editorPlaceholder" class="text-center" style="padding: 40px;">
           <div class="text-sm font-semibold mb-1">Open a file to start editing</div>
           <div class="text-xs">Use the Explorer to browse the active workspace.</div>
         </div>
@@ -512,6 +520,65 @@
       
       if (panel === 'workspace') loadWorkspaceFiles();
       if (panel === 'repo') loadRepoStatus();
+    }
+
+    // --- File Editing Logic ---
+    let currentFilePath = null;
+    let isDirty = false;
+
+    async function openFile(filePath) {
+      try {
+        const result = await window.accessIde.read(filePath);
+        const content = result.content || result.text || result || '';
+        currentFilePath = filePath;
+        document.getElementById('currentFileName').textContent = filePath;
+        const editorArea = document.getElementById('editorArea');
+        editorArea.value = content;
+        editorArea.style.display = 'block';
+        document.getElementById('editorPlaceholder').style.display = 'none';
+        isDirty = false;
+      } catch (e) {
+        alert('Failed to open file: ' + e.message);
+      }
+    }
+
+    async function saveCurrentFile() {
+      if (!currentFilePath) return alert('No file selected to save.');
+      const content = document.getElementById('editorArea').value;
+      try {
+        await window.accessIde.write({ path: currentFilePath, content: content });
+        isDirty = false;
+        document.getElementById('currentFileName').textContent = currentFilePath + ' (Saved)';
+      } catch (e) {
+        alert('Failed to save file: ' + e.message);
+      }
+    }
+
+    async function createNewFile() {
+      const fileName = prompt('Enter new file name (e.g., notes.md):');
+      if (!fileName) return;
+      const newFilePath = fileName;
+      try {
+        await window.accessIde.write({ path: newFilePath, content: '' });
+        currentFilePath = newFilePath;
+        document.getElementById('currentFileName').textContent = newFilePath;
+        const editorArea = document.getElementById('editorArea');
+        editorArea.value = '';
+        editorArea.style.display = 'block';
+        document.getElementById('editorPlaceholder').style.display = 'none';
+        isDirty = false;
+        alert('Created ' + newFilePath);
+        loadWorkspaceFiles();
+      } catch (e) {
+        alert('Failed to create file: ' + e.message);
+      }
+    }
+
+    function markFileDirty() {
+      isDirty = true;
+      if (currentFilePath) {
+        document.getElementById('currentFileName').textContent = currentFilePath + ' ●';
+      }
     }
 
     async function startAgent() {
