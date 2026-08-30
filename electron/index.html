@@ -3,124 +3,534 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live AI Agent Execution Panel</title>
+  <title>Access Agent IDE</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     :root {
-      --bg-base: #1e1e1e;
-      --bg-surface: #252526;
-      --bg-editor: #1e1e1e;
-      --border-color: #3c3c3c;
-      --text-main: #d4d4d4;
+      --bg: #1e1e1e;
+      --surface: #252526;
+      --input-bg: #2d2d30;
+      --border: #3c3c3c;
+      --text: #d4d4d4;
       --text-muted: #858585;
-      --accent-green: #10b981;
       --accent-blue: #3b82f6;
-      --accent-purple: #8b5cf6;
-      --accent-amber: #f59e0b;
-      --font-mono: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      --accent-green: #10b981;
+      --font-mono: 'Consolas', 'Courier New', monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg-base); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; overflow: hidden; }
-    .status-indicator { width: 10px; height: 10px; border-radius: 50%; background: #555; transition: background 0.3s, box-shadow 0.3s; }
-    .status-indicator.thinking { background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
-    .status-indicator.reading { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
-    .status-indicator.tool_calling { background: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); }
-    .status-indicator.writing { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
-    .status-indicator.idle { background: #555; }
-    .cursor { display: inline-block; width: 8px; height: 1.2em; background: var(--accent-green); vertical-align: middle; animation: blink 0.8s infinite; }
-    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    
+    /* Top Header */
+    .header { height: 35px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; }
+    .header-title { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+    .header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    
+    /* Main Layout */
+    .main { flex: 1; display: flex; overflow: hidden; }
+    
+    /* Left Activity Bar */
+    .activity-bar { width: 48px; background: #333333; display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 20px; }
+    .activity-icon { color: var(--text-muted); cursor: pointer; padding: 8px; border-radius: 4px; }
+    .activity-icon:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+    .activity-icon.active { color: var(--text); border-left: 2px solid var(--accent-blue); }
+    
+    /* Center Editor */
+    .editor { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+    .editor-tabs { height: 35px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding-left: 8px; }
+    .editor-content { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; }
+    
+    /* Right Side Panel (Agent UI) */
+    .side-panel { width: 320px; background: var(--surface); display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+    
+    /* Agent Input Box (Blue UI Style) */
+    .agent-input-box { flex: 1; display: flex; flex-direction: column; padding: 10px; background: var(--surface); }
+    .agent-top-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+    .agent-file-badge { display: flex; align-items: center; gap: 6px; background: var(--input-bg); border: 1px dashed var(--border); border-radius: 6px; padding: 6px 10px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); cursor: pointer; }
+    .agent-file-badge:hover { border-color: var(--accent-blue); }
+    .agent-url-input { flex: 1; background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 12px; outline: none; margin-bottom: 10px; }
+    .agent-url-input:focus { border-color: var(--accent-blue); }
+    .agent-controls { display: flex; align-items: center; gap: 8px; margin-top: auto; }
+    .agent-provider { background: transparent; color: var(--text-muted); border: none; font-size: 12px; outline: none; cursor: pointer; }
+    .agent-models { background: transparent; color: var(--text); border: none; font-size: 12px; outline: none; cursor: pointer; max-width: 120px; }
+    .agent-send-btn { background: var(--accent-blue); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-left: auto; }
+    .agent-send-btn:disabled { opacity: 0.5; }
+    .runtime-console { flex: 1; background: #1e1e1e; border-top: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .runtime-console-header { height: 28px; background: #252526; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 10px; font-size: 10px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; }
+    .runtime-console-body { flex: 1; overflow-y: auto; padding: 6px; font-family: var(--font-mono); font-size: 11px; }
+    .tc-entry { margin-bottom: 4px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); border-left: 2px solid var(--accent-blue); }
+    .tc-entry.status { border-left-color: var(--accent-green); }
+    .tc-entry.error { border-left-color: #ef4444; color: #f87171; }
+    .tc-tool-name { color: var(--accent-blue); font-weight: bold; }
+    .tc-tool-args { color: var(--text-muted); }
+    
+    /* Bottom Status Bar */
+    .explorer-panel { width: 220px; background: #252526; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .explorer-header { height: 35px; padding: 0 10px; display: flex; align-items: center; font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .explorer-tabs { display: flex; gap: 10px; padding: 5px 10px; font-size: 11px; border-bottom: 1px solid var(--border); }
+    .explorer-tab { color: var(--text-muted); cursor: pointer; }
+    .explorer-tab.active { color: var(--text); border-bottom: 2px solid var(--accent-blue); }
+    .explorer-content { flex: 1; overflow-y: auto; padding: 8px; font-family: var(--font-mono); font-size: 12px; }
+    .explorer-item { padding: 3px 5px; cursor: pointer; color: var(--text); }
+    .explorer-item:hover { background: rgba(255,255,255,0.05); }
+    .explorer-item.text-muted { color: var(--text-muted); }
+    .explorer-input { width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px; color: var(--text); font-size: 12px; margin-bottom: 8px; outline: none; }
+    .explorer-input:focus { border-color: var(--accent-blue); }
+    .explorer-section-title { font-size: 10px; font-weight: bold; color: var(--text-muted); margin-top: 10px; margin-bottom: 5px; }
+    .terminal-panel { height: 200px; background: #1e1e1e; border-top: 1px solid var(--border); display: flex; flex-direction: column; }
+    .terminal-header { height: 30px; background: #252526; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: bold; color: var(--text-muted); gap: 15px; }
+    .terminal-header span { cursor: pointer; }
+    .terminal-header span.active { color: var(--text); border-bottom: 2px solid var(--accent-blue); }
+    .terminal-body { flex: 1; background: #1e1e1e; padding: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text); overflow-y: auto; }
+    .terminal-body .terminal-line { white-space: pre-wrap; }
+    .terminal-input-line { display: flex; align-items: center; }
+    .terminal-prompt { color: var(--accent-green); margin-right: 4px; }
+    .terminal-input { background: transparent; border: none; color: var(--text); font-family: var(--font-mono); font-size: 12px; outline: none; flex: 1; }
+    .drag-handle-vertical { width: 5px; cursor: col-resize; background: transparent; }
+    .drag-handle-vertical:hover { background: var(--accent-blue); }
+    .drag-handle-horizontal { height: 5px; cursor: row-resize; background: transparent; }
+    .drag-handle-horizontal:hover { background: var(--accent-blue); }
+    .bottom-status { height: 22px; background: var(--accent-blue); color: white; display: flex; align-items: center; padding: 0 8px; font-size: 10px; }
+    .bottom-status span { margin-right: 12px; }
   </style>
 </head>
-<body class="flex flex-col">
-  <!-- Status Bar / Header -->
-  <header class="h-10 bg-[#333333] border-b border-[#3c3c3c] flex items-center justify-between px-4">
-    <div class="flex items-center gap-3">
-      <div id="indicator" class="status-indicator idle"></div>
-      <span id="statusLabel" class="text-xs font-bold uppercase tracking-wider">Idle</span>
-    </div>
-    <div class="flex items-center gap-3">
-      <select id="model-select" class="bg-[#1e1e1e] text-xs border border-[#3c3c3c] rounded px-2 py-1 text-[#d4d4d4]">
-        <option>Loading Models...</option>
-      </select>
-      <button id="btn-start" class="bg-[#0e639c] hover:bg-[#1177bb] text-white text-xs px-3 py-1 rounded">▶ Start Agent</button>
-      <button id="btn-stop" class="bg-[#a1260d] hover:bg-[#c42b1c] text-white text-xs px-3 py-1 rounded hidden">■ Stop</button>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-title">Access Agent IDE</div>
+    <div class="header-actions">
+      <i data-lucide="settings" class="w-4 h-4 text-muted cursor-pointer"></i>
     </div>
   </header>
 
-  <!-- Main Workspace -->
-  <main class="flex-1 flex overflow-hidden">
-    <!-- Editor / Code Streamer -->
-    <div class="flex-1 bg-[#1e1e1e] overflow-auto p-4 font-mono text-sm relative">
-      <div class="text-xs text-[#858585] mb-2">Agent Intent: <span id="actionSummary" class="text-[#d4d4d4]">Waiting for task start...</span></div>
-      <pre id="codeStream" class="whitespace-pre-wrap"></pre><span id="cursor" class="cursor" style="display:none;"></span>
-    </div>
-  </main>
+  <div class="main">
+    <!-- Left Activity Bar -->
+    <aside class="activity-bar">
+      <div id="icon-workspace" class="activity-icon active" onclick="switchPanel('workspace')"><i data-lucide="files" class="w-5 h-5"></i></div>
+      <div id="icon-search" class="activity-icon" onclick="switchPanel('search')"><i data-lucide="search" class="w-5 h-5"></i></div>
+      <div id="icon-agent" class="activity-icon" onclick="switchPanel('agent')"><i data-lucide="bot" class="w-5 h-5"></i></div>
+      <div id="icon-repo" class="activity-icon" onclick="switchPanel('repo')"><i data-lucide="git-branch" class="w-5 h-5"></i></div>
+      <div id="icon-settings" class="activity-icon" onclick="switchPanel('settings')"><i data-lucide="settings" class="w-5 h-5"></i></div>
+    </aside>
 
-  <!-- Terminal / Bottom Log Panel -->
-  <footer class="h-1/3 bg-[#1e1e1e] border-t border-[#3c3c3c] flex flex-col">
-    <div class="h-8 border-b border-[#3c3c3c] flex items-center px-4 text-xs text-[#858585] font-bold uppercase">
-      Execution Log
+    <!-- Left Explorer Panel -->
+    <div id="explorerPanel" class="explorer-panel">
+      <div class="explorer-header">Explorer</div>
+      <div class="explorer-header">EXPLORER</div>
+      <div id="explorerContent" class="explorer-content">
+        <div id="workspaceContent">
+          <div class="explorer-section-title">Files</div>
+          <div id="fileList">Loading...</div>
+        </div>
+        <div id="repoContent" class="hidden">
+          <div class="explorer-section-title">Repository</div>
+          <div id="repoStatus">Loading...</div>
+        </div>
+        <div id="settingsContent" class="hidden">
+          <div class="explorer-section-title">Settings</div>
+          <button id="saveSettingsBtn" class="explorer-item" onclick="savePreferences()">Save Settings</button>
+        </div>
+        <div id="searchContent" class="hidden">
+          <div class="explorer-section-title">Search</div>
+          <input id="searchInput" class="explorer-input" placeholder="Search files..." onkeydown="if(event.key==='Enter')performSearch()" />
+          <div id="searchResults">No results.</div>
+        </div>
+      </div>
     </div>
-    <div id="logPanel" class="flex-1 overflow-auto p-2 font-mono text-xs space-y-1"></div>
+    <!-- Center Editor -->
+    <div class="editor">
+      <div class="editor-tabs">
+        <div class="px-3 py-2 text-xs text-muted">No file selected</div>
+      </div>
+      <div class="editor-content">
+        <div class="text-center">
+          <div class="text-sm font-semibold mb-1">Open a file to start editing</div>
+          <div class="text-xs">Use the Explorer to browse the active workspace.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drag Handle (Vertical) -->
+    <div id="rightPanelDragHandle" class="drag-handle-vertical"></div>
+    <!-- Right Side Agent Panel -->
+    <aside class="side-panel">
+      <!-- Agent Runtime Tool Calls Console (Top) -->
+      <div id="runtimeConsole" class="runtime-console" style="flex: 1; border-bottom: 1px solid var(--border);">
+        <div class="runtime-console-header">Agent Runtime Tool Calls</div>
+        <div id="runtimeConsoleBody" class="runtime-console-body">
+          <div class="tc-entry status">Waiting for task start...</div>
+        </div>
+      </div>
+
+      <!-- Agent Input Box (Bottom) -->
+      <div class="agent-input-box" style="flex: 0 0 220px; border-top: 1px solid var(--border);">
+        <div class="agent-top-bar">
+          <div class="agent-file-badge" onclick="document.getElementById('mdFile').click()">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <i data-lucide="file-text" class="w-4 h-4 text-blue-400"></i>
+            <span id="mdFileName">Agent.md</span>
+          </div>
+          <input type="file" id="mdFile" accept=".md" class="hidden" onchange="loadMdFile(event)">
+        </div>
+
+        <!-- Browser Chat URL Input -->
+        <input id="chatUrlInput" class="agent-url-input" placeholder="Paste browser chat URL here..." />
+
+        <div class="agent-controls">
+          <select id="providerSelect" class="agent-provider" onchange="loadModels()">
+            <option value="lm-studio">LM Studio</option>
+            <option value="cline">Cline</option>
+          </select>
+          <select id="modelSelect" class="agent-models">
+            <option>Models</option>
+          </select>
+          <button id="sendBtn" class="agent-send-btn" onclick="startAgent()">
+            <i data-lucide="arrow-up" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Bottom Terminal Panel -->
+  <div id="terminalPanel" class="terminal-panel">
+    <div class="terminal-header">
+      <span class="active">TERMINAL</span>
+      <span>OUTPUT</span>
+      <span>PROBLEMS</span>
+      <div style="margin-left: auto; display: flex; gap: 10px;">
+        <i data-lucide="plus" class="w-3.5 h-3.5 cursor-pointer" onclick="createTerminal()"></i>
+        <i data-lucide="trash-2" class="w-3.5 h-3.5 cursor-pointer" onclick="clearTerminal()"></i>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 cursor-pointer" onclick="toggleTerminal()"></i>
+      </div>
+    </div>
+    <div id="terminalBody" class="terminal-body">
+      <div class="terminal-line">Welcome to Access Agent Terminal. Type a command below.</div>
+      <div class="terminal-input-line">
+        <span class="terminal-prompt">$</span>
+        <input id="terminalInput" class="terminal-input" placeholder="Type command here..." autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')sendTerminalCommand()" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Status Bar -->
+  <footer class="bottom-status">
+    <span>Local Runtime</span>
+    <span>Workspace connected</span>
   </footer>
 
+  <script src="./preload.js"></script>
   <script>
-    // Backend Connection: window.accessAgentRuntime
+    lucide.createIcons();
     const $ = (id) => document.getElementById(id);
+    let currentMdContent = '';
 
-    async function init() {
-      // Load models
+    window.addEventListener('DOMContentLoaded', async () => {
+      lucide.createIcons();
+      await loadModels();
+      await createTerminal();
+      switchPanel('workspace');
+    });
+
+    async function loadModels() {
+      const provider = $('providerSelect').value;
+      $('modelSelect').innerHTML = '<option>Loading...</option>';
       try {
-        const models = await window.accessAgentRuntime.getModels();
-        const select = $('model-select');
+        const models = await window.accessAgentRuntime.getModels({ providerKind: provider });
         if (models && models.length > 0) {
-          select.innerHTML = '';
+          $('modelSelect').innerHTML = '';
           models.forEach(m => {
             const opt = document.createElement('option');
-            opt.value = m.id || m.name;
+            opt.value = m.id;
             opt.textContent = m.name || m.id;
-            select.appendChild(opt);
+            $('modelSelect').appendChild(opt);
           });
         }
-      } catch (e) { console.error('Model Load Error', e); }
+      } catch (e) {
+        console.error('Model Load Error', e);
+      }
+    }
 
-      $('btn-start').onclick = async () => {
-        $('btn-start').classList.add('hidden');
-        $('btn-stop').classList.remove('hidden');
-        try {
-          await window.accessAgentRuntime.start({ model: $('model-select').value });
-        } catch (e) {
-          console.error('Start Error', e);
-          $('btn-start').classList.remove('hidden');
-          $('btn-stop').classList.add('hidden');
+    function loadMdFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      $('mdFileName').textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = (e) => currentMdContent = e.target.result;
+      reader.readAsText(file);
+    }
+
+    // --- Runtime Tool Call Console Logic ---
+    function logToolCall(message, type = '') {
+      const consoleBody = document.getElementById('runtimeConsoleBody');
+      const entry = document.createElement('div');
+      entry.className = `tc-entry ${type}`;
+      entry.textContent = message;
+      consoleBody.appendChild(entry);
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+    }
+
+    window.addEventListener('ide:agent-event', (event) => {
+      const payload = event.detail || {};
+      const type = payload.type || payload.phase || 'event';
+      const data = payload.data || {};
+      if (data.toolName || type === 'tool_call' || type === 'tool-result') {
+        logToolCall(`${data.toolName || type}: ${JSON.stringify(data.args || data.result || '').substring(0, 150)}`, 'status');
+      } else {
+        logToolCall(`${type}: ${data.message || data.text || ''}`, '');
+      }
+    });
+
+    // --- Terminal Logic ---
+    let terminalId = null;
+    async function createTerminal() {
+      try {
+        const result = await window.accessIde.terminalCreate();
+        terminalId = result.terminalId;
+        window.accessIde.onTerminalData((data) => {
+          const terminalBody = document.getElementById('terminalBody');
+          // Remove the input line before appending new data
+          const inputLine = document.querySelector('.terminal-input-line');
+          if (inputLine) inputLine.remove();
+          
+          // Add the terminal data
+          const line = document.createElement('div');
+          line.className = 'terminal-line';
+          line.textContent = data.data;
+          terminalBody.appendChild(line);
+          
+          // Re-add the input line
+          const newInputLine = document.createElement('div');
+          newInputLine.className = 'terminal-input-line';
+          newInputLine.innerHTML = '<span class="terminal-prompt">$</span>';
+          const newInput = document.createElement('input');
+          newInput.id = 'terminalInput';
+          newInput.className = 'terminal-input';
+          newInput.placeholder = 'Type command here...';
+          newInput.autocomplete = 'off';
+          newInput.spellcheck = false;
+          newInput.onkeydown = (e) => { if (e.key === 'Enter') sendTerminalCommand(); };
+          newInputLine.appendChild(newInput);
+          terminalBody.appendChild(newInputLine);
+          
+          // Focus the new input
+          newInput.focus();
+          terminalBody.scrollTop = terminalBody.scrollHeight;
+        });
+      } catch (e) {
+        console.error('Terminal Create Error', e);
+      }
+    }
+
+    async function sendTerminalCommand() {
+      const input = document.getElementById('terminalInput');
+      const command = input.value.trim();
+      if (!command || !terminalId) return;
+      
+      // Clear input
+      input.value = '';
+      
+      try {
+        await window.accessIde.terminalWrite(terminalId, command + '\n');
+      } catch (e) {
+        console.error('Terminal Write Error', e);
+      }
+    }
+
+    function clearTerminal() {
+      const terminalBody = document.getElementById('terminalBody');
+      terminalBody.innerHTML = '<div class="terminal-line">Terminal cleared.</div>';
+      const newInputLine = document.createElement('div');
+      newInputLine.className = 'terminal-input-line';
+      newInputLine.innerHTML = '<span class="terminal-prompt">$</span>';
+      const newInput = document.createElement('input');
+      newInput.id = 'terminalInput';
+      newInput.className = 'terminal-input';
+      newInput.placeholder = 'Type command here...';
+      newInput.onkeydown = (e) => { if (e.key === 'Enter') sendTerminalCommand(); };
+      newInputLine.appendChild(newInput);
+      terminalBody.appendChild(newInputLine);
+    }
+
+    function toggleTerminal() {
+      const panel = document.getElementById('terminalPanel');
+      panel.classList.toggle('hidden');
+    }
+
+    // --- Drag Resize Logic ---
+    // Right Panel Drag Resize
+    const rightPanel = document.querySelector('.side-panel');
+    const rightDrag = document.getElementById('rightPanelDragHandle');
+    let isDraggingRight = false;
+    
+    rightDrag.addEventListener('mousedown', (e) => {
+      isDraggingRight = true;
+      document.body.style.cursor = 'col-resize';
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isDraggingRight) return;
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth > 280 && newWidth < 600) {
+        rightPanel.style.width = newWidth + 'px';
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      isDraggingRight = false;
+      document.body.style.cursor = 'default';
+    });
+    
+    // Terminal Drag Resize
+    const terminalPanel = document.getElementById('terminalPanel');
+    const terminalDrag = document.getElementById('terminalDragHandle');
+    let isDraggingTerminal = false;
+    
+    terminalDrag.addEventListener('mousedown', (e) => {
+      isDraggingTerminal = true;
+      document.body.style.cursor = 'row-resize';
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isDraggingTerminal) return;
+      const newHeight = window.innerHeight - e.clientY - 22;
+      if (newHeight > 100 && newHeight < 400) {
+        terminalPanel.style.height = newHeight + 'px';
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      isDraggingTerminal = false;
+      document.body.style.cursor = 'default';
+    });
+    
+    // --- Explorer Panel Logic ---
+    async function loadWorkspaceFiles() {
+      try {
+        const files = await window.accessIde.list('.');
+        const list = files && files.items ? files.items : (Array.isArray(files) ? files : []);
+        const fileList = document.getElementById('fileList');
+        if (list.length > 0) {
+          fileList.innerHTML = '';
+          list.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'explorer-item';
+            div.textContent = item.name || item.path || item;
+            fileList.appendChild(div);
+          });
+        } else {
+          fileList.textContent = 'Empty workspace';
         }
-      };
-
-      $('btn-stop').onclick = async () => {
-        $('btn-start').classList.remove('hidden');
-        $('btn-stop').classList.add('hidden');
-        await window.accessAgentRuntime.stop();
-      };
-
-      // Poll status
-      setInterval(async () => {
-        try {
-          const status = await window.accessAgentRuntime.getStatus();
-          updateStatus(status.state.status);
-        } catch (e) {}
-      }, 5000);
+      } catch (e) {
+        document.getElementById('fileList').textContent = 'Error: ' + e.message;
+      }
     }
 
-    function updateStatus(status) {
-      const label = $('statusLabel');
-      const indicator = $('indicator');
-      label.textContent = status.toUpperCase();
-      indicator.className = `status-indicator ${status}`;
-      $('actionSummary').textContent = status === 'running' ? 'Agent is actively processing...' : 'Waiting for task start...';
+    async function loadRepoStatus() {
+      try {
+        const gitStatus = await window.accessIde.gitStatus();
+        const repoStatus = document.getElementById('repoStatus');
+        if (gitStatus && gitStatus.branch) {
+          repoStatus.innerHTML = `<div>Branch: <b>${gitStatus.branch}</b></div><div>Head: <b>${gitStatus.head || 'N/A'}</b></div>`;
+        } else {
+          repoStatus.textContent = 'No repo or not available.';
+        }
+      } catch (e) {
+        document.getElementById('repoStatus').textContent = 'Error: ' + e.message;
+      }
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    async function performSearch() {
+      const query = document.getElementById('searchInput').value.trim();
+      if (!query) return;
+      const resultsEl = document.getElementById('searchResults');
+      resultsEl.textContent = 'Searching...';
+      try {
+        const results = await window.accessIde.search(query, '.');
+        const items = results && results.items ? results.items : (Array.isArray(results) ? results : []);
+        if (items.length > 0) {
+          resultsEl.innerHTML = '';
+          items.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'explorer-item';
+            div.textContent = item.name || item.path || item;
+            resultsEl.appendChild(div);
+          });
+        } else {
+          resultsEl.textContent = 'No results found.';
+        }
+      } catch (e) {
+        resultsEl.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    function switchExplorerTab(tab) {
+      // Hide all tabs
+      ['workspace', 'repo', 'settings', 'search'].forEach(t => {
+        document.getElementById(t + 'Content').classList.add('hidden');
+        document.getElementById('tab-' + t).classList.remove('active');
+      });
+      
+      // Show selected tab
+      document.getElementById(tab + 'Content').classList.remove('hidden');
+      document.getElementById('tab-' + tab).classList.add('active');
+      
+      if (tab === 'workspace') loadWorkspaceFiles();
+      if (tab === 'repo') loadRepoStatus();
+    }
+
+    async function savePreferences() {
+      try {
+        const prefs = await window.accessIde.preferences();
+        alert('Preferences loaded:\n' + JSON.stringify(prefs, null, 2).substring(0, 500));
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    // --- Panel Switching Logic (Based on Icons) ---
+    function switchPanel(panel) {
+      // Update active icon
+      document.querySelectorAll('.activity-icon').forEach(icon => icon.classList.remove('active'));
+      document.getElementById('icon-' + panel).classList.add('active');
+      
+      // Hide all content
+      ['workspace', 'repo', 'settings', 'search'].forEach(t => {
+        document.getElementById(t + 'Content').classList.add('hidden');
+      });
+      
+      // If 'agent' is clicked, hide the whole Explorer panel (so only center/right show)
+      if (panel === 'agent') {
+        document.getElementById('explorerPanel').classList.add('hidden');
+        return;
+      } else {
+        document.getElementById('explorerPanel').classList.remove('hidden');
+      }
+      
+      // Show the requested content
+      document.getElementById(panel + 'Content').classList.remove('hidden');
+      
+      if (panel === 'workspace') loadWorkspaceFiles();
+      if (panel === 'repo') loadRepoStatus();
+    }
+
+    async function startAgent() {
+      const url = $('chatUrlInput').value.trim();
+      if (!url) return;
+      
+      $('sendBtn').disabled = true;
+      try {
+        await window.accessAgentRuntime.start({
+          providerKind: $('providerSelect').value,
+          model: $('modelSelect').value,
+          chatUrl: url,
+          systemPrompt: currentMdContent || ''
+        });
+      } catch (e) {
+        console.error('Start Error', e);
+        $('sendBtn').disabled = false;
+      }
+    }
   </script>
-<script src="./preload.js"></script></body>
+</body>
 </html>

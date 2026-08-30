@@ -29,39 +29,44 @@ AgentRuntimeAdapter.prototype.checkForFeedback = async function() {
 
 
 
-AgentRuntimeAdapter.prototype.discoverModels = async function() {
+
+AgentRuntimeAdapter.prototype.discoverModels = async function(input = {}) {
     const settings = this.getSettings ? this.getSettings() : {};
     const baseUrl = settings.lmStudioBaseUrl || 'http://127.0.0.1:1234/v1';
+    const requestedProvider = input.providerKind || settings.providerKind || 'lm-studio';
 
     let lmModels = [];
-    try {
-        const lmRes = await this.updateProviderSettings({ providerKind: 'lm-studio', lmStudioBaseUrl: baseUrl, discoverOnly: true });
-        lmModels = (lmRes.models || []).map(m => {
-            if (typeof m === 'string') return { id: m, name: m, provider: 'lm-studio', status: 'available' };
-            return { ...m, provider: 'lm-studio', status: 'available' };
-        });
-    } catch(e) { this.lastPoolError = e.message; }
+    if (requestedProvider === 'lm-studio' || requestedProvider === 'all') {
+        try {
+            const lmRes = await this.updateProviderSettings({ providerKind: 'lm-studio', lmStudioBaseUrl: baseUrl, discoverOnly: true });
+            lmModels = (lmRes.models || []).map(m => {
+                if (typeof m === 'string') return { id: m, name: m, provider: 'lm-studio', status: 'available' };
+                return { ...m, provider: 'lm-studio', status: 'available' };
+            });
+        } catch(e) { this.lastPoolError = e.message; }
+    }
 
     let clineModels = [];
-    try {
-        // Discover Cline models
-        const clineRes = await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: 'cline', discoverOnly: true });
-        clineModels = (clineRes.models || []).map(m => {
-            if (typeof m === 'string') {
-                // For string models, mark as free if they start with '~' (Cline's free tier indicator)
-                const isFree = m.startsWith('~');
-                return { id: m, name: m, provider: 'cline', status: 'available', free: isFree };
-            }
-            const isFree = m.pricing?.classification === 'free' || m.free === true || String(m.id || m.name).toLowerCase().includes('free') || String(m.id || m.name).startsWith('~');
-            return { ...m, provider: 'cline', status: 'available', free: isFree };
-        }).filter(Boolean); // Remove nulls
-    } catch(e) { this.lastPoolError = e.message; }
+    if (requestedProvider === 'cline' || requestedProvider === 'all') {
+        try {
+            const clineRes = await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: 'cline', discoverOnly: true });
+            clineModels = (clineRes.models || []).map(m => {
+                if (typeof m === 'string') {
+                    const isFree = m.startsWith('~');
+                    return { id: m, name: m, provider: 'cline', status: 'available', free: isFree };
+                }
+                const isFree = m.pricing?.classification === 'free' || m.free === true || String(m.id || m.name).toLowerCase().includes('free') || String(m.id || m.name).startsWith('~');
+                return { ...m, provider: 'cline', status: 'available', free: isFree };
+            }).filter(Boolean);
+        } catch(e) { this.lastPoolError = e.message; }
+    }
 
     this.modelPool = [...clineModels, ...lmModels].filter(m => m.free === true || m.id.includes('gemma') || m.id.includes('qwen') || m.id.includes('llama') || m.id.includes('smollm')).slice(0, 10);
     this.currentPoolIndex = 0;
     this.roundExhausted = false;
     return this.modelPool;
 };
+
 
 
 
