@@ -49,7 +49,8 @@ AgentRuntimeAdapter.prototype.discoverModels = async function(input = {}) {
     let clineModels = [];
     if (requestedProvider === 'cline' || requestedProvider === 'all') {
         try {
-            const clineRes = await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: 'cline', discoverOnly: true });
+            const clineProviderId = settings.clineProviderId || 'cline';
+            const clineRes = await this.updateProviderSettings({ providerKind: 'cline', clineProviderId, discoverOnly: true });
             clineModels = (clineRes.models || []).map(m => {
                 if (typeof m === 'string') {
                     const isFree = m.startsWith('~');
@@ -61,7 +62,7 @@ AgentRuntimeAdapter.prototype.discoverModels = async function(input = {}) {
         } catch(e) { this.lastPoolError = e.message; }
     }
 
-    this.modelPool = [...clineModels, ...lmModels].filter(m => m.free === true || m.id.includes('gemma') || m.id.includes('qwen') || m.id.includes('llama') || m.id.includes('smollm')).slice(0, 10);
+    this.modelPool = [...clineModels, ...lmModels];
     this.currentPoolIndex = 0;
     this.roundExhausted = false;
     return this.modelPool;
@@ -124,7 +125,7 @@ AgentRuntimeAdapter.prototype.executeWithFallback = async function(input) {
 
         // CRITICAL: Install the provider with the selected model BEFORE calling run()
         if (providerKind === 'cline') {
-            await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: 'cline', clineModel: model.id, discoverOnly: false });
+            await this.updateProviderSettings({ providerKind: 'cline', clineProviderId: settings.clineProviderId || 'cline', clineModel: model.id, discoverOnly: false });
         } else {
             const baseUrl = settings.lmStudioBaseUrl || 'http://127.0.0.1:1234/v1';
             await this.updateProviderSettings({ providerKind: 'lm-studio', lmStudioBaseUrl: baseUrl, lmStudioModel: model.id });

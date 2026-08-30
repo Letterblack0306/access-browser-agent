@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   status: () => invoke('ide:status'),
   runtimeStart: () => invoke('ide:runtime-start'),
   runtimeStop: () => invoke('ide:runtime-stop'),
-  getModels: () => invoke('ide:get-models'),
+  getModels: input => invoke('ide:get-models', input || {}),
   getStatus: () => invoke('ide:loop-status'),
   runtimeRestart: () => invoke('ide:runtime-restart'),
   preferences: () => invoke('ide:preferences'),
@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   list: relativePath => invoke('ide:list', relativePath),
   read: relativePath => invoke('ide:read', relativePath),
   write: input => invoke('ide:write', input),
+  create: input => invoke('ide:create', input),
   search: (query, relativePath) => invoke('ide:search', query, relativePath),
   inspectWorkspace: relativePath => invoke('ide:inspect-workspace', relativePath),
   mcpStatus: () => invoke('ide:mcp-status'),
@@ -130,7 +131,7 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
 const invokeAgent = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 
 contextBridge.exposeInMainWorld('accessAgentRuntime', Object.freeze({
-    getModels: () => invokeAgent('ide:get-models'),
+    getModels: (input) => invokeAgent('ide:get-models', input),
     start: (input) => invokeAgent('ide:agent-start', input),
     stop: (turnId) => invokeAgent('ide:agent-stop', turnId),
     getStatus: () => invokeAgent('ide:loop-status')

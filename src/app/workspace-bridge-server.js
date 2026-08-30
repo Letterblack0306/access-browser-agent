@@ -20,6 +20,25 @@ async function handleWorkspaceBridgeRequest(request, reader) {
   const method = String(request.method || 'GET').toUpperCase();
   const url = routePath(request.url || '/');
 
+  if (method === 'POST' && url.pathname === '/api/workspace/create') {
+    const body = await readJsonBody(request);
+    try {
+      new ChangeGovernanceGuard({ workspaceRoot:reader.workspaceRoot }).assertMutation({
+        toolName:'createFile',
+        args:{ path:body.path, changeId:body.changeId },
+      });
+    } catch (error) {
+      return json(403, {
+        ok:false,
+        code:String(error?.code || 'CHANGE_GOVERNANCE_BLOCKED'),
+        error:String(error?.message || error),
+        classification:'GOVERNANCE',
+      });
+    }
+    const result = await reader.create(body.path, body.content);
+    return json(result.ok ? 201 : 400, result);
+  }
+
   if (method === 'PUT' && url.pathname === '/api/workspace/file') {
     const body = await readJsonBody(request);
     try {
@@ -44,7 +63,7 @@ async function handleWorkspaceBridgeRequest(request, reader) {
     return json(405, {
       ok: false,
       code: 'METHOD_NOT_ALLOWED',
-      error: 'This bridge accepts GET reads and governed PUT file saves only.'
+      error: 'This bridge accepts GET reads, governed POST file creation, and governed PUT file saves only.'
     });
   }
 

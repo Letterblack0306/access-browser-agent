@@ -125,6 +125,10 @@
         <div id="repoContent" class="hidden">
           <div class="explorer-section-title">Repository</div>
           <div id="repoStatus">Loading...</div>
+          <div class="explorer-section-title">Changed Files</div>
+          <div id="gitDiffList">Loading...</div>
+          <div class="explorer-section-title">Diff View</div>
+          <textarea id="gitDiffView" class="explorer-input" style="height: 200px; resize: vertical; font-family: monospace;" placeholder="Select a changed file to view diff..." readonly></textarea>
         </div>
         <div id="settingsContent" class="hidden">
           <div class="explorer-section-title">Settings</div>
@@ -139,12 +143,10 @@
     </div>
     <!-- Center Editor -->
     <div class="editor">
-      <!-- Editor Toolbar -->
-      <div style="height: 35px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; align-items: center; padding: 0 10px; gap: 10px;">
-        <span style="font-size: 11px; color: #858585; font-weight: bold;">Editor</span>
-        <button onclick="createNewFile()" style="background: #2d2d30; border: 1px solid #3c3c3c; color: #d4d4d4; border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;">New File</button>
-        <button onclick="saveCurrentFile()" style="background: #0e639c; border: none; color: white; border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;">Save</button>
-        <span id="currentFileName" style="font-size: 11px; color: #858585; margin-left: auto; font-family: monospace;"></span>
+      <!-- Editor Tabs Bar -->
+      <div id="editorTabs" style="height: 35px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; align-items: center; padding: 0 5px; overflow-x: auto; gap: 2px;">
+        <button onclick="createNewFile()" style="background: #2d2d30; border: 1px solid #3c3c3c; color: #d4d4d4; border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer; margin-right: 10px;">+ New</button>
+        <span id="tabPlaceholder" style="font-size: 11px; color: #858585;">No files open</span>
       </div>
       <div class="editor-tabs">
         <div class="px-3 py-2 text-xs text-muted">No file selected</div>
@@ -443,8 +445,32 @@
         } else {
           repoStatus.textContent = 'No repo or not available.';
         }
+        // Load changed files
+        const diffList = document.getElementById('gitDiffList');
+        if (gitStatus && gitStatus.changedFiles && gitStatus.changedFiles.length > 0) {
+          diffList.innerHTML = '';
+          gitStatus.changedFiles.forEach(file => {
+            const div = document.createElement('div');
+            div.className = 'explorer-item';
+            div.textContent = file.path || file;
+            div.onclick = () => loadGitDiff(file.path || file);
+            diffList.appendChild(div);
+          });
+        } else {
+          diffList.textContent = 'No changed files';
+        }
       } catch (e) {
         document.getElementById('repoStatus').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function loadGitDiff(filePath) {
+      try {
+        const diff = await window.accessIde.gitDiff(filePath);
+        const diffView = document.getElementById('gitDiffView');
+        diffView.value = diff || 'No diff available.';
+      } catch (e) {
+        document.getElementById('gitDiffView').value = 'Error: ' + e.message;
       }
     }
 
@@ -580,6 +606,147 @@
         document.getElementById('currentFileName').textContent = currentFilePath + ' ●';
       }
     }
+
+    // --- Tab Manager ---
+    let openFiles = [];
+    let activeFilePath = null;
+
+    function renderTabs() {
+      const container = document.getElementById('editorTabs');
+      const newBtn = container.querySelector('button');
+      container.innerHTML = '';
+      container.appendChild(newBtn);
+
+      if (openFiles.length === 0) {
+        const span = document.createElement('span');
+        span.id = 'tabPlaceholder';
+        span.style.cssText = 'font-size: 11px; color: #858585;';
+        span.textContent = 'No files open';
+        container.appendChild(span);
+        return;
+      }
+
+      openFiles.forEach(file => {
+        const tab = document.createElement('div');
+        tab.style.cssText = 'display: flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer; border-right: 1px solid #3c3c3c;';
+        if (file.path === activeFilePath) {
+          tab.style.background = '#1e1e1e';
+          tab.style.borderTop = '2px solid #0e639c';
+          tab.style.color = '#d4d4d4';
+        } else {
+          tab.style.background = '#2d2d30';
+          tab.style.color = '#858585';
+        }
+        tab.onclick = () => switchTab(file.path);
+
+        const dot = document.createElement('span');
+        dot.textContent = file.dirty ? '●' : '';
+        dot.style.color = '#f59e0b';
+        tab.appendChild(dot);
+
+        const name = document.createElement('span');
+        name.textContent = file.path.split('/').pop() || file.path;
+        tab.appendChild(name);
+
+        const close = document.createElement('span');
+        close.textContent = '×';
+        close.style.cssText = 'margin-left: 6px; color: #858585; cursor: pointer;';
+        close.onclick = (e) => { e.stopPropagation(); closeTab(file.path); };
+        tab.appendChild(close);
+        container.appendChild(tab);
+      });
+    }
+
+    function switchTab(path) {
+      const file = openFiles.find(f => f.path === path);
+      if (!file) return;
+      activeFilePath = path;
+      const editorArea = document.getElementById('editorArea');
+      editorArea.value = file.content;
+      editorArea.style.display = 'block';
+      document.getElementById('editorPlaceholder').style.display = 'none';
+      renderTabs();
+    }
+
+    function closeTab(path) {
+      const file = openFiles.find(f => f.path === path);
+      if (file && file.dirty) {
+        if (!confirm('File has unsaved changes. Close anyway?')) return;
+      }
+      openFiles = openFiles.filter(f => f.path !== path);
+      if (activeFilePath === path) {
+        activeFilePath = openFiles.length > 0 ? openFiles[openFiles.length - 1].path : null;
+        if (activeFilePath) {
+          switchTab(activeFilePath);
+        } else {
+          document.getElementById('editorArea').style.display = 'none';
+          document.getElementById('editorPlaceholder').style.display = 'block';
+        }
+      }
+      renderTabs();
+    }
+
+    // Hook into existing functions to update tabs (without overwriting them)
+    const originalOpenFile = window.openFile;
+    window.openFile = function(filePath) {
+      if (openFiles.some(f => f.path === filePath)) {
+        switchTab(filePath);
+        return;
+      }
+      const result = originalOpenFile(filePath);
+      if (result && result.then) {
+        result.then((res) => {
+          const content = res.content || res.text || res || '';
+          openFiles.push({ path: filePath, content: content, dirty: false });
+          activeFilePath = filePath;
+          document.getElementById('editorArea').value = content;
+          document.getElementById('editorArea').style.display = 'block';
+          document.getElementById('editorPlaceholder').style.display = 'none';
+          renderTabs();
+        });
+      }
+    };
+
+    // Hook save to clear dirty state
+    const originalSave = window.saveCurrentFile;
+    window.saveCurrentFile = function() {
+      const result = originalSave();
+      if (result && result.then) {
+        result.then(() => {
+          const file = openFiles.find(f => f.path === activeFilePath);
+          if (file) file.dirty = false;
+          renderTabs();
+        });
+      }
+    };
+
+    // Hook new file creation to add a tab
+    const originalCreate = window.createNewFile;
+    window.createNewFile = function() {
+      const result = originalCreate();
+      if (result && result.then) {
+        result.then(() => {
+          const editorArea = document.getElementById('editorArea');
+          const value = editorArea.value;
+          const fileName = prompt('Enter file name:');
+          if (fileName) {
+            openFiles.push({ path: fileName, content: value, dirty: false });
+            activeFilePath = fileName;
+            renderTabs();
+          }
+        });
+      }
+    };
+
+    // Hook dirty state
+    const originalDirty = window.markFileDirty;
+    window.markFileDirty = function() {
+      const result = originalDirty();
+      const file = openFiles.find(f => f.path === activeFilePath);
+      if (file) file.dirty = true;
+      renderTabs();
+      return result;
+    };
 
     async function startAgent() {
       const url = $('chatUrlInput').value.trim();

@@ -63,9 +63,23 @@ async function run() {
   assert.equal(save.status, 200);
   assert.deepEqual(calls, [['write', 'src/app.js', 'updated', 'a'.repeat(64)]]);
 
+  reader.create = async (target, content) => {
+    calls.push(['create', target, content]);
+    return { ok: true, path: target, sha256: 'c'.repeat(64) };
+  };
+  const create = await handleWorkspaceBridgeRequest(request('POST', '/api/workspace/create', {
+    path: 'src/new.js', content: 'created', changeId:'bridge-change'
+  }), reader);
+  assert.equal(create.status, 201);
+  assert.deepEqual(calls[1], ['create', 'src/new.js', 'created']);
+
   await handleWorkspaceBridgeRequest(request('GET', '/api/workspace/search?query=bridge&path=src'), reader);
   await handleWorkspaceBridgeRequest(request('GET', '/api/workspace/inspect?path=src'), reader);
-  assert.deepEqual(calls.slice(1), [['search', 'bridge', 'src'], ['inspect', 'src']]);
+  assert.deepEqual(calls.slice(1), [
+    ['create', 'src/new.js', 'created'],
+    ['search', 'bridge', 'src'],
+    ['inspect', 'src'],
+  ]);
 
   assert.equal((await handleWorkspaceBridgeRequest(request('POST', '/api/workspace/file'), reader)).status, 405);
   assert.equal((await handleWorkspaceBridgeRequest(request('GET', '/api/workspace/proposals/legacy'), reader)).status, 404);

@@ -457,6 +457,9 @@ ipcMain.handle('ide:provider-configure', async (_event, input = {}) => {
       lmStudioTtlSeconds: input.lmStudioTtlSeconds || null,
       lmStudioImageInput: input.lmStudioImageInput === true,
       clineImageInput: input.clineImageInput === true,
+      providerKind: String(input.providerKind || preferenceValues.providerKind || 'lm-studio').trim(),
+      clineProviderId: String(input.clineProviderId || preferenceValues.clineProviderId || 'cline').trim(),
+      clineModel: String(input.clineModel || preferenceValues.clineModel || '').trim(),
       mcpServerCommand: String(input.mcpServerCommand || '').trim(),
       workspaceRoot,
       mcpEnabled,
@@ -525,6 +528,11 @@ ipcMain.handle('ide:write', (_event, input = {}) => bridgeRequest('/api/workspac
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(input),
 }));
+ipcMain.handle('ide:create', (_event, input = {}) => bridgeRequest('/api/workspace/create', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(input),
+}));
 ipcMain.handle('ide:search', (_event, query, relativePath = '.') => bridgeRequest(`/api/workspace/search?query=${encodeURIComponent(query)}&path=${encodeURIComponent(relativePath)}`));
 ipcMain.handle('ide:inspect-workspace', (_event, relativePath = '.') => bridgeRequest(`/api/workspace/inspect?path=${encodeURIComponent(relativePath)}`));
 ipcMain.handle('ide:models', (_event, baseUrl) => diagnostics.listModels(baseUrl));
@@ -582,7 +590,18 @@ ipcMain.handle('ide:agent-reject', (_event, approvalId) => agentRuntime.reject(a
 // ide:agent-stop is handled globally in rebuild-main.js to bypass runtime gate
 
 ipcMain.handle('ide:get-models', (_event, input = {}) => agentRuntime.discoverModels({ providerKind: input.providerKind }));
-ipcMain.handle('ide:agent-start', (_event, input = {}) => agentRuntime.executeWithFallback(input));
+ipcMain.handle('ide:agent-start', async (_event, input = {}) => {
+  // Validate that if a chatUrl is provided, it matches the selected Browser Loop target
+  if (input.chatUrl && browserAuthority) {
+    const target = browserAuthority.relay?.status()?.target || null;
+    if (target && target.url !== input.chatUrl) {
+      const error = new Error('The provided Agent URL does not match the selected Browser Loop target. Please select the correct conversation tab.');
+      error.code = 'BROWSER_TARGET_MISMATCH';
+      throw error;
+    }
+  }
+  return agentRuntime.executeWithFallback(input);
+});
 ipcMain.handle('ide:agent-stop', (_event, turnId) => agentRuntime.stop(turnId));
 
 ipcMain.handle('ide:loop-status', () => {
