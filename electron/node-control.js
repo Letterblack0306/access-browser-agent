@@ -5,6 +5,7 @@
   const byId = (id) => document.getElementById(id);
   const state = {
     runtime: null,
+    browserAuthority: null,
     tabs: [],
     skills: [],
     mcp: null,
@@ -82,10 +83,18 @@
     return relay.target || relay.selectedTarget || null;
   }
 
+  function generalBrowserState() {
+    return state.browserAuthority && state.browserAuthority.generalBrowser || {};
+  }
+
   function inferredWorkTarget() {
-    const control = selectedControlTarget();
-    if (!Array.isArray(state.tabs)) return null;
-    return state.tabs.find((target) => !control || target.targetId !== control.targetId) || null;
+    const general = generalBrowserState();
+    if (!general.currentTargetId) return null;
+    return {
+      targetId: general.currentTargetId,
+      ownedTargetCount: general.ownedTargetCount || 0,
+      type: 'owned-page',
+    };
   }
 
   function keyValues(rows) {
@@ -175,10 +184,10 @@
       return {
         state: work ? 'good' : 'idle',
         html: keyValues([
-          ['title', truncate(work && work.title, 32)],
           ['target', truncate(work && work.targetId, 32)],
+          ['owned', work ? String(work.ownedTargetCount) : '0'],
           ['type', safe(work && work.type)],
-          ['url', truncate(work && work.url, 38)],
+          ['source', 'browser authority'],
         ]),
         chips: ['explicit target', 'inspect', 'navigate', 'capture'],
       };
@@ -346,6 +355,7 @@
 
     const calls = [
       ['runtime', () => window.accessIde.status()],
+      ['browserAuthority', () => window.accessIde.browserStatus()],
       ['tabs', () => window.accessIde.browserProviderTabs()],
       ['skills', () => window.accessIde.skills()],
       ['mcp', () => window.accessIde.mcpStatus()],
@@ -462,12 +472,8 @@
       if (name === 'run-loop') {
         const url = byId('chatUrlInput') && byId('chatUrlInput').value.trim();
         if (!url) throw new Error('Select a provider control target first.');
-        await window.accessAgentRuntime.start({
-          providerKind: byId('providerSelect') ? byId('providerSelect').value : 'openai-compatible',
-          model: byId('modelSelect') ? byId('modelSelect').value : '',
-          chatUrl: url,
-          systemPrompt: typeof window.currentMdContent === 'string' ? window.currentMdContent : '',
-        });
+        if (typeof window.startAgent !== 'function') throw new Error('The existing agent start control is unavailable.');
+        await window.startAgent();
       }
       await refreshAll();
     } catch (error) {
