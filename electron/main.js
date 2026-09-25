@@ -374,6 +374,7 @@ ipcMain.handle('ide:select-chrome-profile', async (_event, currentPath = '') => 
   const result = await dialog.showOpenDialog(windowRef, { title: 'Choose Chrome profile folder', defaultPath: requested && fs.existsSync(requested) ? requested : undefined, properties: ['openDirectory'] });
   return result.canceled || !result.filePaths[0] ? { canceled: true } : { canceled: false, path: path.resolve(result.filePaths[0]) };
 });
+ipcMain.handle('ide:browser-status', () => browserAuthority.status());
 ipcMain.handle('ide:browser-start', () => browserAuthority.ensureBrowser());
 ipcMain.handle('ide:browser-stop', () => browserAuthority.stop());
 ipcMain.handle('ide:browser-provider-tabs', () => browserAuthority.listProviderTabs());
