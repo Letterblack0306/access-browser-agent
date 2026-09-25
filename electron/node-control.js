@@ -217,7 +217,7 @@
           ['MCP tools', String(mcpTools)],
           ['owner', 'ToolRegistry'],
         ]),
-        chips: ['browser', 'workspace', 'terminal', 'MCP'],
+        chips: ['readFile','createFile','writeFile','applyPatch','listFiles','searchFiles','inspectWorkspace','inspectEnvironment','gitStatus','runCommand','askUser','browserConversationRead','restoreCheckpoint','listCheckpoints','browserOpen','browserTabs','browserNavigate','browserSnapshot','browserScreenshot','browserCompareScreenshots','browserClick','browserType','browserScroll','browserClose'],
       };
     }
 
