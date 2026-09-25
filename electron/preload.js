@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('accessIde', Object.freeze({
   onAutoPlanTrigger: listener => subscribe('ide:auto-plan-trigger', listener),
   savePreferences: input => invoke('ide:save-preferences', input),
   selectChromeProfile: currentPath => invoke('ide:select-chrome-profile', currentPath),
+  browserStatus: () => invoke('ide:browser-status'),
   browserStart: () => invoke('ide:browser-start'),
   browserStop: () => invoke('ide:browser-stop'),
   browserProviderTabs: () => invoke('ide:browser-provider-tabs'),
