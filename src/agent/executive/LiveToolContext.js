@@ -8,7 +8,7 @@ const { GovernedTerminal } = require('../../system/governed-terminal');
 const { MachineEnvironment } = require('../../system/machine-environment');
 const { WorkspaceCheckpointAuthority } = require('../../system/workspace-checkpoint-authority');
 
-function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, terminalShell, machineEnvironment, browserRuntime, onAskUser, checkpointAuthority } = {}) {
+function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, terminalShell, machineEnvironment, browserRuntime, clineExecutor, onAskUser, checkpointAuthority } = {}) {
   const root = path.resolve(workspaceRoot);
   const runtimeRoot = stateRoot ? path.resolve(stateRoot) : root;
   const checkpoint = checkpointAuthority || new WorkspaceCheckpointAuthority({ workspaceRoot:root });
@@ -146,6 +146,25 @@ function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, term
     return command;
   }
 
+  async function clineStatus() {
+    if (!clineExecutor || typeof clineExecutor.status !== 'function') {
+      return { ok:false, observation:'UNAVAILABLE', code:'CLINE_EXECUTOR_UNAVAILABLE', error:'Local Cline executor is not configured.' };
+    }
+    try { return await clineExecutor.status(); }
+    catch (error) { return { ok:false, observation:'FAILED', code:String(error?.code || 'CLINE_STATUS_FAILED'), error:String(error?.message || error) }; }
+  }
+
+  async function clineExecute(args) {
+    if (!clineExecutor || typeof clineExecutor.execute !== 'function') {
+      return { ok:false, observation:'UNAVAILABLE', code:'CLINE_EXECUTOR_UNAVAILABLE', error:'Local Cline executor is not configured.' };
+    }
+    return clineExecutor.execute({
+      task:String(args.task || '').trim(),
+      acceptance:Array.isArray(args.acceptance) ? args.acceptance : [],
+      timeoutMs:args.timeoutMs,
+    });
+  }
+
   async function askUser(args) {
     const question = String(args.question || '').trim();
     if (onAskUser) onAskUser({ question });
@@ -188,6 +207,19 @@ function buildLiveToolContext({ workspaceRoot, stateRoot, reader, terminal, term
     tool('inspectEnvironment', 'Inspect the active host environment and resolve requested bare executable names against the live PATH/PATHEXT. This discovers machine capability; it does not grant execution authority.', { type:'object', properties:{ executables:{type:'array',items:{type:'string'},maxItems:32} } }, ACTION_KINDS.WORKSPACE_INSPECT, (_ctx,args) => inspectEnvironment(args)),
     tool('gitStatus', 'Return structured Git status for the active workspace when available.', { type:'object', properties:{} }, ACTION_KINDS.GIT_STATUS, () => ws.gitStatus ? ws.gitStatus() : { ok:false, code:'GIT_STATUS_UNAVAILABLE', error:'Git status unavailable.' }),
     tool('runCommand', 'Run one exact literal executable with literal arguments in the active workspace. Executable availability is resolved from the live machine environment; LBE and workspace change governance still decide execution authority. A denied command is returned as evidence and is never substituted.', { type:'object', properties:{ command:{type:'string'},changeId:changeIdProperty }, required:['command'] }, ACTION_KINDS.COMMAND_EXECUTE, (_ctx,args) => runCommand(args)),
+    {
+      ...tool('clineLocalStatus', 'Verify the local Cline CLI and the configured LM Studio endpoint/model before delegating coding work. This is read-only and does not prove a coding task has succeeded.', { type:'object', properties:{}, additionalProperties:false }, ACTION_KINDS.RUNTIME_INSPECT, () => clineStatus()),
+      category:'code-executor',
+      readOnly:true,
+      operatingGuidance:'Use before clineExecute when local Cline/LM Studio availability has not yet been proven in this run.',
+      failureModes:['cline executable missing','LM Studio unreachable','selected LM Studio model unavailable'],
+    },
+    {
+      ...tool('clineExecute', 'Delegate a bounded substantial coding task to the installed Cline CLI inside the active workspace. Cline must already be configured to use LM Studio; the tool verifies the local LM Studio endpoint/model first, captures structured output and Git status, and requires independent diff/test/browser verification before completion.', { type:'object', properties:{ task:{type:'string'},acceptance:{type:'array',maxItems:20,items:{type:'string'}},timeoutMs:{type:'integer',minimum:10000,maximum:3600000},changeId:changeIdProperty }, required:['task'], additionalProperties:false }, ACTION_KINDS.COMMAND_EXECUTE, (_ctx,args) => clineExecute(args)),
+      category:'code-executor',
+      operatingGuidance:'Use for substantial code changes. After it returns, independently inspect Git diff, run tests, and verify browser-visible behavior when applicable. Never accept Cline prose as completion proof.',
+      failureModes:['cline executable missing','LM Studio unreachable','selected model unavailable','Cline non-zero exit','timeout'],
+    },
     tool('askUser', 'Surface one necessary question when an essential decision genuinely blocks execution.', { type:'object', properties:{ question:{type:'string'} }, required:['question'] }, ACTION_KINDS.USER_QUESTION, (_ctx,args) => askUser(args)),
     {
       ...tool('browserConversationRead', 'Read recent user/assistant turns from the currently selected exact Browser Loop conversation when the current assistant turn does not contain enough context. This is read-only and cannot navigate, type into, or control the protected ChatGPT transport tab.', { type:'object', properties:{ limit:{type:'integer',minimum:1,maximum:100} }, additionalProperties:false }, ACTION_KINDS.RUNTIME_INSPECT, (_ctx,args) => browserConversationRead(args)),
