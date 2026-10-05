@@ -5,6 +5,7 @@ const { ClineAuthSession } = require('../src/llm/ClineAuthSession');
 const { createProvider, normalizeProviderKind } = require('../src/llm/ProviderFactory');
 const { ModelReadinessRegistry, normalizeReadiness } = require('../src/llm/ModelReadinessRegistry');
 const { emitDiagnostic } = require('../src/system/runtime-diagnostic-bus');
+const { LocalClineExecutor } = require('../src/system/local-cline-executor');
 const { createCorrelation } = require('../src/system/runtime-correlation');
 const { runWithCorrelation } = require('../src/system/runtime-correlation-context');
 const { DEFAULTS: PREFERENCE_DEFAULTS } = require('../src/system/ide-preferences');
@@ -23,6 +24,10 @@ class AgentRuntimeAdapter {
       onProgress:message => this._emitClineAuthEvent('cline.auth.progress', { message:String(message || '') }),
     });
     const settings = this.getSettings() || {};
+    this.localCline = new LocalClineExecutor({
+      workspaceRoot:this.workspaceRoot,
+      getSettings:this.getSettings,
+    });
     this.service = new UnifiedAgentService({
       workspaceRoot:options.workspaceRoot || process.cwd(),
       stateRoot:options.stateRoot,
@@ -30,6 +35,7 @@ class AgentRuntimeAdapter {
       pinnedSkills:options.pinnedSkills,
       mcp:options.mcp || null,
       providerOptions:{ lmStudioBaseUrl:settings.lmStudioBaseUrl, lmStudioModel:settings.lmStudioModel, apiKey:settings.lmStudioApiKey, lmStudioImageInput:settings.lmStudioImageInput === true },
+      toolOptions:{ clineExecutor:this.localCline },
       systemPrompt:settings.systemPrompt || PREFERENCE_DEFAULTS.systemPrompt,
       onEvent:event => {
         emitDiagnostic({ source:'agent-runtime', category:'agent', action:event?.type || event?.phase || 'event', phase:event?.status || 'event', correlation:correlationFrom(event), data:event });
