@@ -26,6 +26,8 @@ const DEFAULT_SYSTEM_PROMPT = `You are a Local Coding Assistant with full access
 - Terminal: api.terminalCreate, api.terminalWrite.
 - Browser: api.browserOpenExactChat, api.browserRelayStart/Stop.
 - Agent Runtime: api.run({ instruction }) for high-level tasks.
+- For substantial coding, prefer the governed clineExecute tool. Cline is an executor, not a second authority.
+- clineExecute must use the configured local LM Studio model. After Cline returns, independently inspect the diff, run tests, and verify browser-visible behavior before claiming completion.
 
 ## 4. Safety & Governance
 - Never execute destructive commands without explicit approval.
@@ -43,6 +45,8 @@ const DEFAULTS = Object.freeze({
   },
   clineProviderId: 'cline',
   clineModel: '',
+  clineExecutable: 'cline',
+  clineLocalAutoApprove: true,
   lmStudioBaseUrl: 'http://127.0.0.1:1234/v1',
   lmStudioModel: '',
   lmStudioApiKey: '',
@@ -97,6 +101,8 @@ function normalize(input = {}) {
     providerKind: PROVIDER_KINDS.has(providerKind) ? providerKind : DEFAULTS.providerKind,
     clineProviderId: String(input.clineProviderId || DEFAULTS.clineProviderId).trim() || DEFAULTS.clineProviderId,
     clineModel: String(input.clineModel || '').trim(),
+    clineExecutable: String(input.clineExecutable || DEFAULTS.clineExecutable).trim() || DEFAULTS.clineExecutable,
+    clineLocalAutoApprove: input.clineLocalAutoApprove !== false,
     lmStudioBaseUrl: String(input.lmStudioBaseUrl || DEFAULTS.lmStudioBaseUrl).trim(),
     lmStudioModel: String(input.lmStudioModel || '').trim(),
     lmStudioApiKey: String(input.lmStudioApiKey || '').trim(),
