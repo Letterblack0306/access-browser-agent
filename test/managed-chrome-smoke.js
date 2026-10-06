@@ -182,5 +182,21 @@ const { ManagedChrome, resolveChromeExecutable, chromeExecutable } = require('..
   );
   assert.equal(exitedWithoutEndpoint.status().lifecycle,'unavailable');
 
+  let concurrentSpawnCount=0;
+  let concurrentReads=0;
+  const concurrentChild={pid:8777,killed:false,once:()=>{},kill(){this.killed=true;}};
+  const concurrent=new ManagedChrome({
+    getSettings:()=>({browserMode:'managed',browserProfilePath:profilePath,browserExecutable:process.execPath}),
+    spawnImpl:()=>{concurrentSpawnCount+=1;return concurrentChild;},
+    readFile:async()=>{concurrentReads+=1;if(concurrentReads===1)throw Object.assign(new Error('no stale marker'),{code:'ENOENT'});return '8777\\n/devtools/browser/concurrent';},
+    delayImpl:async()=>{},
+    fetchImpl:async url=>{assert.equal(url,'http://127.0.0.1:8777/json/version');return{ok:true,status:200};},
+  });
+  const concurrentResults=await Promise.all([concurrent.start(),concurrent.start()]);
+  assert.equal(concurrentSpawnCount,1,'concurrent Managed Chrome starts must share one spawn operation');
+  assert.equal(concurrentResults[0].endpoint,'http://127.0.0.1:8777');
+  assert.equal(concurrentResults[1].endpoint,'http://127.0.0.1:8777');
+  assert.equal(concurrentResults[0].pid,concurrentResults[1].pid,'concurrent callers must observe the same owned browser process');
+
   console.log('Managed Chrome smoke PASS');
 })().catch(error => { console.error(error); process.exitCode = 1; });

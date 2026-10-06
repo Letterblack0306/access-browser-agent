@@ -73,6 +73,7 @@ class ManagedChrome {
     this.machineEnvironment = machineEnvironment; this.access = accessImpl;
     this.child = null; this.endpoint = ''; this.error = ''; this.lifecycle = 'unconfigured'; this.launchActivePort = null; this.generation = 0; this.resolvedExecutable = null; this.executableSource = null;
     this.launchInProgress = false; this.launcherExit = null; this.bootstrapUrl = null; this.bootstrapTargetId = null;
+    this.startPromise = null;
   }
   profilePath(settings = this.getSettings() || {}) {
     const configured = String(settings.browserProfilePath || '').trim();
@@ -104,6 +105,15 @@ class ManagedChrome {
     };
   }
   async start() {
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this._startInternal();
+    try {
+      return await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+  async _startInternal() {
     const settings = this.getSettings() || {};
     if ((settings.browserMode || 'managed') !== 'managed') { this.lifecycle='unconfigured'; throw new Error('Managed Chrome is disabled. Select Managed Chrome in Settings to launch it.'); }
     const profilePath = this.profilePath(settings);
