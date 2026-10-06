@@ -93,6 +93,7 @@
     .bottom-status { height: 22px; background: var(--accent-blue); color: white; display: flex; align-items: center; padding: 0 8px; font-size: 10px; }
     .bottom-status span { margin-right: 12px; }
   </style>
+  <link rel="stylesheet" href="./node-control.css">
 </head>
 <body>
   <!-- Header -->
@@ -109,6 +110,7 @@
       <div id="icon-workspace" class="activity-icon active" onclick="switchPanel('workspace')"><i data-lucide="files" class="w-5 h-5"></i></div>
       <div id="icon-search" class="activity-icon" onclick="switchPanel('search')"><i data-lucide="search" class="w-5 h-5"></i></div>
       <div id="icon-agent" class="activity-icon" onclick="switchPanel('agent')"><i data-lucide="bot" class="w-5 h-5"></i></div>
+      <div id="icon-nodes" class="activity-icon" onclick="toggleNodeControl()" title="Node Control"><i data-lucide="workflow" class="w-5 h-5"></i></div>
       <div id="icon-repo" class="activity-icon" onclick="switchPanel('repo')"><i data-lucide="git-branch" class="w-5 h-5"></i></div>
       <div id="icon-settings" class="activity-icon" onclick="switchPanel('settings')"><i data-lucide="settings" class="w-5 h-5"></i></div>
     </aside>
@@ -203,6 +205,7 @@
   </div>
 
   <!-- Bottom Terminal Panel -->
+  <div id="nodeControlSurface" aria-label="Access Agent Node Control"></div>
   <div id="terminalPanel" class="terminal-panel">
     <div class="terminal-header">
       <span class="active">TERMINAL</span>
@@ -230,6 +233,7 @@
   </footer>
 
   <script src="./preload.js"></script>
+  <script src="./node-control.js"></script>
   <script>
     lucide.createIcons();
     const $ = (id) => document.getElementById(id);
@@ -524,6 +528,7 @@
 
     // --- Panel Switching Logic (Based on Icons) ---
     function switchPanel(panel) {
+      if (window.toggleNodeControl) window.toggleNodeControl(false);
       // Update active icon
       document.querySelectorAll('.activity-icon').forEach(icon => icon.classList.remove('active'));
       document.getElementById('icon-' + panel).classList.add('active');
